@@ -814,20 +814,6 @@
                             </div>
                         </div>
 
-                        <!-- Species -->
-                        <div class="filter-section">
-                            <label>Species: <span id="speciesCount" class="selected-count" style="display: none;">0</span></label>
-                            <input type="text" class="search-box" placeholder="Search species..." id="speciesSearch">
-                            <div class="options-container" id="speciesContainer">
-                                {% for species in all_species %}
-                                    <div class="option-item">
-                                        <input type="checkbox" name="species" value="{{ species.id }}" id="species_{{ species.id }}" {% if species.id|stringformat:"s" in selected_species %}checked{% endif %}>
-                                        <label for="species_{{ species.id }}">{{ species.name }}</label>
-                                    </div>
-                                {% endfor %}
-                            </div>
-                        </div>
-
                         <!-- Item Categories -->
                         <div class="filter-section">
                             <label>Item Categories: <span id="categoriesCount" class="selected-count" style="display: none;">0</span></label>
@@ -1005,15 +991,6 @@
                                 <input type="date" name="end_date" value="{{ end_date }}" id="endDate">
                             </div>
                         </div>
-
-                        <div class="date-group">
-                            <label>Format:</label>
-                            <select name="format" class="search-box" style="margin-bottom: 0;">
-                                <option value="html">HTML View</option>
-                                <option value="json">JSON Export</option>
-                                <option value="print">Print View</option>
-                            </select>
-                        </div>
                     </div>
 
                     <button type="submit" class="apply-button">Generate Report</button>
@@ -1102,9 +1079,6 @@
                 <div class="export-buttons">
                     <a href="{% url 'adminapp:spot_purchase_profit_loss_report_print' %}" id="printLink" target="_blank" class="export-btn print-btn">
                         <i class="fas fa-print"></i> Print Report
-                    </a>
-                    <a href="?format=json&{{ request.GET.urlencode }}" class="export-btn json-btn">
-                        <i class="fas fa-download"></i> JSON Export
                     </a>
                 </div>
             </div>
@@ -1206,7 +1180,6 @@ document.addEventListener('DOMContentLoaded', function() {
     setupSearch('agentsSearch', 'agentsContainer', 'agentsCount');
     setupSearch('supervisorsSearch', 'supervisorsContainer', 'supervisorsCount');
     setupSearch('itemsSearch', 'itemsContainer', 'itemsCount');
-    setupSearch('speciesSearch', 'speciesContainer', 'speciesCount');
     setupSearch('categoriesSearch', 'categoriesContainer', 'categoriesCount');
     setupSearch('qualitySearch', 'qualityContainer', 'qualityCount');
     setupSearch('typesSearch', 'typesContainer', 'typesCount');

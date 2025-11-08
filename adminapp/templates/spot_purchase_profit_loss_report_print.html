@@ -17,9 +17,9 @@
 
         body {
             font-family: Arial, sans-serif;
-            font-size: 10px;
+            font-size: 16px;
             line-height: 1.2;
-            background: white;
+            background: #f0f8ff;
             padding: 10px;
         }
 
@@ -32,28 +32,34 @@
             text-align: center;
             margin-bottom: 20px;
             padding: 15px;
-            background: #0066cc;
-            color: white;
+            background: linear-gradient(135deg, #a2ceff 0%, #add1f7 100%);
+            color: rgb(0, 0, 0);
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
         }
 
         .report-title {
-            font-size: 20px;
+            font-size: 26px;
             font-weight: bold;
             margin-bottom: 5px;
         }
 
         .section {
             margin-bottom: 15px;
-            border: 2px solid #0066cc;
+            border: 2px solid #add1f7;
+            border-radius: 8px;
+            overflow: hidden;
+            background: white;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.08);
             page-break-inside: avoid;
         }
 
         .section-header {
-            background: #0066cc;
-            color: white;
+            background: linear-gradient(135deg, #9ccaff 0%, #add1f7 100%);
+            color: rgb(0, 0, 0);
             padding: 8px;
             font-weight: bold;
-            font-size: 12px;
+            font-size: 18px;
             text-align: center;
         }
 
@@ -71,23 +77,24 @@
         .grid-4 { grid-template-columns: repeat(4, 1fr); }
 
         .data-item {
-            border: 1px solid #0066cc;
-            padding: 5px;
+            border: 1px solid #a3cef1;
+            border-radius: 4px;
+            overflow: hidden;
         }
 
         .data-label {
-            background: #0066cc;
-            color: white;
+            background: linear-gradient(135deg, #9ccaff 0%, #9ccaff 100%);
+            color: rgb(0, 0, 0);
             padding: 4px;
             font-weight: bold;
-            font-size: 9px;
+            font-size: 14px;
             text-align: center;
         }
 
         .data-value {
             padding: 4px;
             text-align: center;
-            background: white;
+            background: #f0f8ff;
             font-weight: bold;
         }
 
@@ -95,12 +102,14 @@
             width: 100%;
             border-collapse: collapse;
             margin: 10px 0;
-            font-size: 9px;
+            font-size: 14px;
+            border-radius: 6px;
+            overflow: hidden;
         }
 
         table th {
-            background: #0066cc;
-            color: white;
+            background: linear-gradient(135deg, #9ccaff 0%, #add1f7 100%);
+            color: rgb(0, 0, 0);
             padding: 6px 4px;
             text-align: center;
             font-weight: bold;
@@ -109,18 +118,20 @@
 
         table td {
             padding: 4px;
-            border: 1px solid #0066cc;
+            border: 1px solid #c5dff5;
             text-align: center;
+            background: white;
         }
 
         .text-left { text-align: left !important; }
         .text-right { text-align: right !important; }
-        .bg-yellow { background: #ffeb3b; }
-        .bg-light-blue { background: #e3f2fd; }
+        .bg-yellow { background: #fff9e6 !important; }
+        .bg-light-blue { background: #e3f2fd !important; }
 
         .cost-summary {
-            background: #fff9c4;
-            border: 2px solid #fbc02d;
+            background: #e6f3ff;
+            border: 2px solid #add1f7;
+            border-radius: 6px;
             padding: 10px;
             margin: 10px 0;
         }
@@ -129,13 +140,11 @@
             display: flex;
             justify-content: space-between;
             padding: 3px 0;
-            border-bottom: 1px solid #ddd;
+            border-bottom: 1px solid #c5dff5;
         }
 
         .cost-row:last-child {
             border-bottom: none;
-            font-weight: bold;
-            font-size: 11px;
         }
 
         .action-buttons {
@@ -148,40 +157,82 @@
         .btn {
             padding: 10px 20px;
             border: none;
-            border-radius: 5px;
+            border-radius: 6px;
             cursor: pointer;
             font-weight: bold;
+            transition: all 0.3s;
         }
 
-        .btn-primary { background: #0066cc; color: white; }
-        .btn-danger { background: #dc3545; color: white; }
+        .btn-primary { 
+            background: linear-gradient(135deg, #9ccaff 0%, #add1f7 100%);
+            color: white; 
+        }
+        .btn-primary:hover {
+            background: linear-gradient(135deg, #add1f7 0%, #9ccaff 100%);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        }
+        
+        .btn-danger { 
+            background: linear-gradient(135deg, #e33f2c 0%, #c0392b 100%);
+            color: white; 
+        }
+        .btn-danger:hover {
+            background: linear-gradient(135deg, #c0392b 0%, #a93226 100%);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        }
 
         @media print {
             .action-buttons { display: none; }
-            body { padding: 0; }
+            body { padding: 0; background: white; }
             .section { page-break-inside: avoid; }
         }
 
-        .profit { color: green; font-weight: bold; }
-        .loss { color: red; font-weight: bold; }
+        .profit { color: #04c414; font-weight: bold; }
+        .loss { color: #ff1900; font-weight: bold; }
         
         .grand-total {
-            background: #0066cc !important;
-            color: white !important;
+            background: linear-gradient(135deg, #add1f7 0%, #357abd 100%) !important;
+            color: rgb(0, 0, 0) !important;
             font-weight: bold;
-            font-size: 11px;
+            font-size: 17px;
+        }
+
+        /* Overhead table specific styling */
+        .overhead-table {
+            margin-top: 10px;
+        }
+
+        .overhead-table td {
+            background: #f8fbff;
+        }
+
+        .overhead-table tr:hover td {
+            background: #e3f2fd;
+        }
+        
+        /* Warning for zero overhead */
+        .overhead-warning {
+            background: #fff3cd;
+            border: 1px solid #ffc107;
+            padding: 8px;
+            margin: 5px 0;
+            border-radius: 4px;
+            color: #856404;
+            text-align: center;
+            font-size: 14px;
         }
     </style>
 </head>
 <body>
     <div class="report-container">
         <div class="report-header">
-            <div class="report-title">PROFIT & LOSS ANALYSIS</div>
+            <div class="report-title">SPOT PURCHASE PROFIT & LOSS ANALYSIS</div>
             <div>Period: {{ start_date }} to {{ end_date }}</div>
         </div>
 
         <div class="action-buttons">
-            <button onclick="window.print()" class="btn btn-primary">Print Report</button>
             <button onclick="generatePDF()" class="btn btn-danger" id="pdfBtn">Generate PDF</button>
         </div>
 
@@ -440,7 +491,7 @@
                         <span>Total Revenue:</span>
                         <span>Rs/ {{ purchase.freezing_revenue|floatformat:2 }}</span>
                     </div>
-                    <div class="cost-row" style="background: {% if purchase.total_profit_loss > 0 %}#a5d6a7{% else %}#ef9a9a{% endif %}; padding: 8px;">
+                    <div class="cost-row" style="background: {% if purchase.total_profit_loss > 0 %}#a5d6a7{% else %}#E6908D66{% endif %}; padding: 8px;">
                         <span>TOTAL PROFIT/LOSS:</span>
                         <span class="{% if purchase.total_profit_loss > 0 %}profit{% else %}loss{% endif %}">
                             Rs/ {{ purchase.total_profit_loss|floatformat:2 }} ({{ purchase.profit_percentage|floatformat:1 }}%)

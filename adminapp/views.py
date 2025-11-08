@@ -3559,7 +3559,7 @@ def freezing_entry_local_update(request, pk):
         FreezingEntryLocal,
         FreezingEntryLocalItem,
         form=FreezingEntryLocalItemForm,
-        extra=1,
+        extra=0,
         can_delete=True
     )
     
@@ -8071,16 +8071,11 @@ def tenant_stock_summary(request):
 @transaction.atomic
 def create_tenant_bill(tenant, from_date, to_date):
     """
-    Create a TenantBill using ONLY TenantStock data.
+    Create a TenantBill using ONLY TenantStock data with proper amount tracking.
     
     IMPORTANT: This uses original_kg from TenantStock.
     If original_kg is 0, it will use available_kg as fallback.
     """
-    from adminapp.models import (
-        TenantBill, TenantBillItem, TenantStock, 
-        FreezingEntryTenant, FreezingEntryTenantItem,
-        TenantFreezingTariff
-    )
     
     # Avoid duplicates for exact period
     existing = TenantBill.objects.filter(
@@ -8149,35 +8144,41 @@ def create_tenant_bill(tenant, from_date, to_date):
             )
             tariff = Decimal("0.00")
 
-        # ✅ Calculate line total
-        line_total = tariff * billing_kg
+        # ✅ Calculate line total: tariff * kg (no days multiplier)
+        line_total = (tariff * billing_kg).quantize(
+            Decimal('0.01'), rounding=ROUND_HALF_UP
+        )
         
         logger.info(
             f"Billing {stock.item.name}: "
             f"KG={billing_kg}, Tariff={tariff}, Total={line_total}"
         )
 
-        # Find ANY related FreezingEntry to satisfy NOT NULL constraint
+        # Find matching FreezingEntryTenant for this tenant and stock
         freezing_entry = FreezingEntryTenant.objects.filter(
             tenant_company_name=tenant,
-            freezing_status="complete"
-        ).first()
+            freezing_status="complete",
+            freezing_date__lte=to_date  # Only entries up to billing period
+        ).order_by('-freezing_date').first()
         
         if not freezing_entry:
-            logger.error(f"No FreezingEntry found for {tenant}, cannot create bill item")
+            logger.error(f"No FreezingEntryTenant found for {tenant}, cannot create bill item")
             continue
         
-        # Find ANY related FreezingEntryTenantItem to satisfy NOT NULL constraint
+        # Find matching FreezingEntryTenantItem
         freezing_item = FreezingEntryTenantItem.objects.filter(
             freezing_entry=freezing_entry,
             item=stock.item,
             brand=stock.brand,
+            freezing_category=stock.freezing_category,
+            grade=stock.grade
         ).first()
         
-        # If no exact match, use any item from this entry
+        # If no exact match, use any item from this entry with same item
         if not freezing_item:
             freezing_item = FreezingEntryTenantItem.objects.filter(
-                freezing_entry=freezing_entry
+                freezing_entry=freezing_entry,
+                item=stock.item
             ).first()
         
         if not freezing_item:
@@ -8193,7 +8194,7 @@ def create_tenant_bill(tenant, from_date, to_date):
             slab_quantity=billing_slab,  # ✅ From TenantStock
             c_s_quantity=billing_cs,     # ✅ From TenantStock
             kg_quantity=billing_kg,      # ✅ From TenantStock
-            days_stored=0,
+            days_stored=0,               # ✅ Not used in calculation
             tariff_per_day=tariff,
             line_total=line_total,
         )
@@ -8218,6 +8219,7 @@ def create_tenant_bill(tenant, from_date, to_date):
     )
     
     return bill
+
 
 
 @check_permission('billing_view')
@@ -13503,7 +13505,7 @@ def get_tenant_balance(request):
         # 🔹 1. Sum of all tenant bills for tenants with same company name
         bills_total = TenantBill.objects.filter(
             tenant__company_name=tenant_company_name,
-            status__in=['finalized', 'sent', 'paid']  # ✅ Changed from 'draft'
+            status__in=['draft']  # Only include finalized bills
         ).aggregate(total=Sum("total_amount"))["total"] or 0
 
         # 🔹 2. Sum of receipts & payments in vouchers for tenants with same company name
@@ -13533,7 +13535,7 @@ def get_tenant_balance(request):
 
     except Tenant.DoesNotExist:
         return JsonResponse({"error": "Tenant not found"}, status=404)
-
+    
 @check_permission('voucher_view')
 def tenantvoucher_list_with_summary(request):
     """Enhanced list view with transaction summary and filtering"""
@@ -13645,29 +13647,39 @@ def tenantvoucher_list_with_summary(request):
     
     return render(request, "adminapp/vouchers/tenantvoucher_list_summary.html", context)
 
+
+
+
+
+
+
 @check_permission('voucher_view')
 def tenant_voucher_summary_pdf(request):
-    """Generate PDF summary report"""
+    """Generate comprehensive PDF summary report for tenant vouchers"""
     
-    # Get same filter parameters as list view
+    # Get filter parameters
     date_filter = request.GET.get('date_filter', 'all')
     start_date = request.GET.get('start_date')
     end_date = request.GET.get('end_date')
     tenant_filter = request.GET.get('tenant')
     
-    # Apply same filtering logic
+    # Base queryset
     vouchers = TenantVoucher.objects.select_related('tenant').order_by('-date', '-id')
     
     today = timezone.now().date()
+    period_name = "All Time"
     
+    # Apply date filtering
     if date_filter == 'today':
         vouchers = vouchers.filter(date=today)
-        period_name = f"Today ({today})"
+        period_name = f"Today ({today.strftime('%d %b %Y')})"
+    
     elif date_filter == 'week':
         week_start = today - timedelta(days=today.weekday())
         week_end = week_start + timedelta(days=6)
         vouchers = vouchers.filter(date__range=[week_start, week_end])
-        period_name = f"This Week ({week_start} to {week_end})"
+        period_name = f"This Week ({week_start.strftime('%d %b')} to {week_end.strftime('%d %b %Y')})"
+    
     elif date_filter == 'month':
         month_start = today.replace(day=1)
         if today.month == 12:
@@ -13676,221 +13688,428 @@ def tenant_voucher_summary_pdf(request):
             month_end = today.replace(month=today.month + 1, day=1) - timedelta(days=1)
         vouchers = vouchers.filter(date__range=[month_start, month_end])
         period_name = f"This Month ({month_start.strftime('%B %Y')})"
+    
     elif date_filter == 'year':
         year_start = today.replace(month=1, day=1)
         year_end = today.replace(month=12, day=31)
         vouchers = vouchers.filter(date__range=[year_start, year_end])
         period_name = f"This Year ({today.year})"
+    
     elif date_filter == 'custom' and start_date and end_date:
         try:
             start_date_obj = datetime.strptime(start_date, '%Y-%m-%d').date()
             end_date_obj = datetime.strptime(end_date, '%Y-%m-%d').date()
             vouchers = vouchers.filter(date__range=[start_date_obj, end_date_obj])
-            period_name = f"Custom Range ({start_date} to {end_date})"
+            period_name = f"Custom Range ({start_date_obj.strftime('%d %b %Y')} to {end_date_obj.strftime('%d %b %Y')})"
         except ValueError:
             period_name = "All Time"
-    else:
-        period_name = "All Time"
     
+    # Apply tenant filter
+    selected_tenant = None
     if tenant_filter:
-        vouchers = vouchers.filter(tenant_id=tenant_filter)
+        try:
+            vouchers = vouchers.filter(tenant_id=tenant_filter)
+            selected_tenant = Tenant.objects.get(id=tenant_filter)
+        except Tenant.DoesNotExist:
+            pass
     
-    # Calculate summary
+    # Calculate overall summary
     summary = vouchers.aggregate(
         total_vouchers=Count('id'),
         total_receipts=Sum('receipt'),
         total_payments=Sum('payment'),
-        net_amount=Sum('receipt') - Sum('payment')
     )
     
+    # Handle None values
     for key, value in summary.items():
         if value is None:
-            summary[key] = Decimal('0.00')
+            summary[key] = Decimal('0.00') if 'total' in key else 0
     
-    # Get tenant-wise summary
+    # Calculate net amount
+    summary['net_amount'] = summary['total_receipts'] - summary['total_payments']
+    
+    # Get tenant-wise summary with all details
     tenant_summary = vouchers.values(
+        'tenant__id',
         'tenant__company_name',
-        'tenant__contact_person'
+        'tenant__contact_person',
+        'tenant__phone',
+        'tenant__email'
     ).annotate(
         voucher_count=Count('id'),
         total_receipts=Sum('receipt'),
         total_payments=Sum('payment'),
-        net_amount=Sum('receipt') - Sum('payment')
-    ).order_by('-net_amount')
+    ).order_by('-total_receipts')
     
-    # Render PDF
-    template = get_template('adminapp/vouchers/tenant_voucher_summary_pdf.html')
+    # Calculate net amount for each tenant
+    for tenant in tenant_summary:
+        tenant['net_amount'] = (tenant['total_receipts'] or Decimal('0.00')) - (tenant['total_payments'] or Decimal('0.00'))
+        # Get latest voucher date for this tenant
+        latest = vouchers.filter(tenant_id=tenant['tenant__id']).order_by('-date').first()
+        tenant['latest_date'] = latest.date if latest else None
+    
+    
+    # Prepare context
     context = {
-        'vouchers': vouchers,
+        'vouchers': vouchers[:100],  # Limit to 100 for PDF performance
+        'total_voucher_count': vouchers.count(),
         'summary': summary,
         'tenant_summary': tenant_summary,
         'period_name': period_name,
+        'selected_tenant': selected_tenant,
         'generated_date': timezone.now(),
-        'company_name': 'Your Company Name',  # Replace with actual company name
+        'generated_by': request.user.full_name if hasattr(request.user, 'full_name') else 'Admin',
     }
     
+    # Render template
+    template = get_template('adminapp/vouchers/tenant_voucher_summary_pdf.html')
     html = template.render(context)
     
-    # Create PDF
+    # Create PDF response
     response = HttpResponse(content_type='application/pdf')
-    response['Content-Disposition'] = f'attachment; filename="tenant_voucher_summary_{date_filter}_{today}.pdf"'
+    filename = f"tenant_voucher_summary_{date_filter}_{today.strftime('%Y%m%d')}.pdf"
+    response['Content-Disposition'] = f'inline; filename="{filename}"'
     
-    pisa_status = pisa.CreatePDF(html, dest=response)
+    # Generate PDF
+    pisa_status = pisa.CreatePDF(
+        io.BytesIO(html.encode("UTF-8")),
+        dest=response,
+        encoding='UTF-8'
+    )
     
     if pisa_status.err:
-        return HttpResponse('We had some errors <pre>' + html + '</pre>')
+        return HttpResponse(f'<h1>PDF Generation Error</h1><pre>{html}</pre>')
     
     return response
 
+
 @check_permission('voucher_view')
 def tenant_statement_pdf(request, tenant_id):
-    """Generate PDF statement for specific tenant"""
+    """Generate comprehensive PDF statement for specific tenant with complete financial summary
     
+    NOTE: This includes ALL bills except cancelled ones (draft, finalized, sent, paid)
+    to match the balance shown on the tenant voucher page.
+    """
+    
+    # Get tenant or 404
     tenant = get_object_or_404(Tenant, id=tenant_id)
+    tenant_company_name = tenant.company_name
     
     # Get filter parameters
     date_filter = request.GET.get('date_filter', 'all')
     start_date = request.GET.get('start_date')
     end_date = request.GET.get('end_date')
     
-    # Get tenant bills and vouchers
     today = timezone.now().date()
+    period_name = "All Time"
+    filter_start_date = None
+    filter_end_date = None
     
-    # Filter bills
+    # Base querysets - filter by tenant directly
+    # Include all bills EXCEPT cancelled (include draft, finalized, sent, paid)
     bills = TenantBill.objects.filter(
-        tenant__company_name=tenant.company_name,
-        status__in=['finalized', 'sent', 'paid']
-    )
+        tenant=tenant
+    ).exclude(status='cancelled')
     
-    # Filter vouchers
-    vouchers = TenantVoucher.objects.filter(
-        tenant__company_name=tenant.company_name
-    )
+    vouchers = TenantVoucher.objects.filter(tenant=tenant)
     
     # Apply date filtering
     if date_filter == 'today':
+        filter_start_date = today
+        filter_end_date = today
         bills = bills.filter(bill_date=today)
         vouchers = vouchers.filter(date=today)
-        period_name = f"Today ({today})"
+        period_name = f"Today ({today.strftime('%d %b %Y')})"
+    
     elif date_filter == 'week':
         week_start = today - timedelta(days=today.weekday())
         week_end = week_start + timedelta(days=6)
+        filter_start_date = week_start
+        filter_end_date = week_end
         bills = bills.filter(bill_date__range=[week_start, week_end])
         vouchers = vouchers.filter(date__range=[week_start, week_end])
-        period_name = f"This Week ({week_start} to {week_end})"
+        period_name = f"This Week ({week_start.strftime('%d %b')} to {week_end.strftime('%d %b %Y')})"
+    
     elif date_filter == 'month':
         month_start = today.replace(day=1)
         if today.month == 12:
             month_end = today.replace(year=today.year + 1, month=1, day=1) - timedelta(days=1)
         else:
             month_end = today.replace(month=today.month + 1, day=1) - timedelta(days=1)
+        filter_start_date = month_start
+        filter_end_date = month_end
         bills = bills.filter(bill_date__range=[month_start, month_end])
         vouchers = vouchers.filter(date__range=[month_start, month_end])
         period_name = f"This Month ({month_start.strftime('%B %Y')})"
+    
     elif date_filter == 'year':
         year_start = today.replace(month=1, day=1)
         year_end = today.replace(month=12, day=31)
+        filter_start_date = year_start
+        filter_end_date = year_end
         bills = bills.filter(bill_date__range=[year_start, year_end])
         vouchers = vouchers.filter(date__range=[year_start, year_end])
         period_name = f"This Year ({today.year})"
+    
     elif date_filter == 'custom' and start_date and end_date:
         try:
             start_date_obj = datetime.strptime(start_date, '%Y-%m-%d').date()
             end_date_obj = datetime.strptime(end_date, '%Y-%m-%d').date()
+            filter_start_date = start_date_obj
+            filter_end_date = end_date_obj
             bills = bills.filter(bill_date__range=[start_date_obj, end_date_obj])
             vouchers = vouchers.filter(date__range=[start_date_obj, end_date_obj])
-            period_name = f"Custom Range ({start_date} to {end_date})"
+            period_name = f"Custom Range ({start_date_obj.strftime('%d %b %Y')} to {end_date_obj.strftime('%d %b %Y')})"
         except ValueError:
-            period_name = "All Time"
-    else:
-        period_name = "All Time"
+            pass
     
-    bills = bills.order_by('bill_date')
-    vouchers = vouchers.order_by('date')
+    # ============================================
+    # CALCULATE OPENING BALANCE (before filter period)
+    # ============================================
+    opening_balance = Decimal('0.00')
     
-    # Calculate totals
+    if filter_start_date:
+        # Get all transactions BEFORE the filter start date
+        opening_bills = TenantBill.objects.filter(
+            tenant=tenant,
+            bill_date__lt=filter_start_date
+        ).exclude(status='cancelled').aggregate(total=Sum('total_amount'))['total'] or Decimal('0.00')
+        
+        opening_vouchers = TenantVoucher.objects.filter(
+            tenant=tenant,
+            date__lt=filter_start_date
+        ).aggregate(
+            total_receipts=Sum('receipt'),
+            total_payments=Sum('payment')
+        )
+        
+        opening_receipts = opening_vouchers['total_receipts'] or Decimal('0.00')
+        opening_payments = opening_vouchers['total_payments'] or Decimal('0.00')
+        
+        # Calculate opening balance using same logic as get_tenant_balance
+        opening_balance = opening_bills - opening_receipts + opening_payments
+    
+    # Order by date
+    bills = bills.order_by('bill_date', 'id')
+    vouchers = vouchers.order_by('date', 'id')
+    
+    # ============================================
+    # COMPLETE FINANCIAL SUMMARY CALCULATIONS
+    # ============================================
+    
+    # Calculate bills summary - THIS WILL SHOW total_amount
     bills_total = bills.aggregate(total=Sum('total_amount'))['total'] or Decimal('0.00')
+    bills_count = bills.count()
+    
+    # Calculate vouchers summary
     vouchers_summary = vouchers.aggregate(
         total_receipts=Sum('receipt'),
-        total_payments=Sum('payment')
+        total_payments=Sum('payment'),
+        voucher_count=Count('id')
     )
     
     total_receipts = vouchers_summary['total_receipts'] or Decimal('0.00')
     total_payments = vouchers_summary['total_payments'] or Decimal('0.00')
-    outstanding_balance = bills_total - total_receipts + total_payments
+    voucher_count = vouchers_summary['voucher_count'] or 0
     
-    # Create combined transaction list for chronological order
+    # Calculate period balance (transactions in current period only)
+    period_balance = bills_total - total_receipts + total_payments
+    
+    # Calculate closing balance (opening + period transactions)
+    closing_balance = opening_balance + period_balance
+    
+    # Calculate paid bills
+    paid_bills = bills.filter(status='paid')
+    paid_bills_total = paid_bills.aggregate(total=Sum('total_amount'))['total'] or Decimal('0.00')
+    paid_bills_count = paid_bills.count()
+    
+    # Calculate unpaid bills (finalized or sent but not paid)
+    unpaid_bills = bills.exclude(status='paid')
+    unpaid_bills_total = unpaid_bills.aggregate(total=Sum('total_amount'))['total'] or Decimal('0.00')
+    unpaid_bills_count = unpaid_bills.count()
+    
+    # Get last payment details
+    last_payment = vouchers.filter(receipt__gt=0).order_by('-date').first()
+    last_payment_amount = last_payment.receipt if last_payment else Decimal('0.00')
+    last_payment_date = last_payment.date if last_payment else None
+    
+    # Get last bill details
+    last_bill = bills.order_by('-bill_date').first()
+    last_bill_amount = last_bill.total_amount if last_bill else Decimal('0.00')
+    last_bill_date = last_bill.bill_date if last_bill else None
+    
+    # Calculate total transactions
+    total_transactions = bills_count + voucher_count
+    
+    # Create comprehensive summary dictionary
+    financial_summary = {
+        # Bills - bills_total contains the sum of all total_amount fields
+        'total_bills': bills_total,  # This is the sum of all bill.total_amount
+        'bills_count': bills_count,
+        'paid_bills_total': paid_bills_total,
+        'paid_bills_count': paid_bills_count,
+        'unpaid_bills_total': unpaid_bills_total,
+        'unpaid_bills_count': unpaid_bills_count,
+        
+        # Vouchers/Payments
+        'total_receipts': total_receipts,
+        'total_payments': total_payments,
+        'voucher_count': voucher_count,
+        'net_vouchers': total_receipts - total_payments,
+        
+        # Balance - using get_tenant_balance logic
+        'opening_balance': opening_balance,
+        'period_balance': period_balance,
+        'outstanding_balance': closing_balance,  # This matches get_tenant_balance remain_amount
+        'remaining_balance': closing_balance,
+        
+        # Last Transaction Details
+        'last_payment_amount': last_payment_amount,
+        'last_payment_date': last_payment_date,
+        'last_bill_amount': last_bill_amount,
+        'last_bill_date': last_bill_date,
+        
+        # Overall
+        'total_transactions': total_transactions,
+    }
+    
+    # ============================================
+    # CREATE TRANSACTION LIST WITH REMAINING BALANCE
+    # ============================================
+    
     transactions = []
     
+    # Add opening balance entry if there's a filter and opening balance exists
+    if filter_start_date and opening_balance != Decimal('0.00'):
+        transactions.append({
+            'date': filter_start_date,
+            'type': 'Opening',
+            'reference': 'O/B',
+            'description': 'Opening Balance (Previous Transactions)',
+            'debit': Decimal('0.00'),
+            'credit': Decimal('0.00'),
+            'balance': opening_balance,
+            'status': 'opening',
+            'is_opening': True
+        })
+    
+    # Add bills as CHARGES (what tenant needs to pay)
+    # Each bill's total_amount will be shown in the debit column
     for bill in bills:
         transactions.append({
             'date': bill.bill_date,
             'type': 'Bill',
             'reference': bill.bill_number,
-            'description': f"Bill from {bill.from_date} to {bill.to_date}",
-            'debit': bill.total_amount,
+            'description': f"Freezing Bill: {bill.from_date.strftime('%d %b')} to {bill.to_date.strftime('%d %b %Y')} ({bill.total_kg:.2f} KG)",
+            'debit': bill.total_amount,  # THIS SHOWS THE BILL'S total_amount
             'credit': Decimal('0.00'),
-            'balance': None  # Will calculate running balance
+            'balance': None,
+            'status': bill.status,
+            'is_opening': False,
+            'bill_obj': bill,  # Keep reference to bill object for template access
         })
     
+    # Add receipts and payments from vouchers
     for voucher in vouchers:
+        # Receipt = Payment FROM tenant (reduces what they owe)
         if voucher.receipt > 0:
             transactions.append({
                 'date': voucher.date,
                 'type': 'Receipt',
                 'reference': voucher.voucher_no,
-                'description': voucher.description or 'Payment received',
+                'description': voucher.description or 'Payment received from tenant',
                 'debit': Decimal('0.00'),
                 'credit': voucher.receipt,
-                'balance': None
+                'balance': None,
+                'status': 'completed',
+                'is_opening': False
             })
         
+        # Payment = Refund TO tenant (increases what they can claim)
         if voucher.payment > 0:
             transactions.append({
                 'date': voucher.date,
                 'type': 'Payment',
                 'reference': voucher.voucher_no,
-                'description': voucher.description or 'Payment made',
+                'description': voucher.description or 'Refund made to tenant',
                 'debit': voucher.payment,
                 'credit': Decimal('0.00'),
-                'balance': None
+                'balance': None,
+                'status': 'completed',
+                'is_opening': False
             })
     
-    # Sort by date
-    transactions.sort(key=lambda x: x['date'])
+    # Sort by date chronologically (opening balance stays first if exists)
+    transactions.sort(key=lambda x: (x['date'], 0 if x.get('is_opening') else 1, x['type']))
     
-    # Calculate running balance
-    running_balance = Decimal('0.00')
+    # Calculate REMAINING BALANCE using get_tenant_balance logic
+    # Start with opening balance, add charges (debit), subtract payments (credit)
+    remaining_balance = opening_balance
+    
     for transaction in transactions:
-        running_balance += transaction['debit'] - transaction['credit']
-        transaction['balance'] = running_balance
+        if transaction.get('is_opening'):
+            # Opening balance already set
+            continue
+        
+        # Apply same formula: bills - receipts + payments
+        remaining_balance = remaining_balance + transaction['debit'] - transaction['credit']
+        transaction['balance'] = remaining_balance
     
-    # Render PDF
-    template = get_template('adminapp/vouchers/tenant_statement_pdf.html')
+    # Get billing configuration if exists
+    billing_config = None
+    try:
+        billing_config = TenantBillingConfiguration.objects.get(tenant=tenant, is_active=True)
+    except TenantBillingConfiguration.DoesNotExist:
+        pass
+    
+    # ============================================
+    # PREPARE CONTEXT
+    # ============================================
+    
     context = {
         'tenant': tenant,
         'transactions': transactions,
-        'bills_total': bills_total,
+        'financial_summary': financial_summary,
+        
+        # Keep backward compatibility
+        'bills_total': bills_total,  # Sum of all total_amount fields
+        'bills_count': bills_count,
         'total_receipts': total_receipts,
         'total_payments': total_payments,
-        'outstanding_balance': outstanding_balance,
+        'voucher_count': voucher_count,
+        'outstanding_balance': closing_balance,  # This is the remain_amount from get_tenant_balance
+        'opening_balance': opening_balance,
+        
         'period_name': period_name,
+        'billing_config': billing_config,
         'generated_date': timezone.now(),
-        'company_name': 'Your Company Name',  # Replace with actual company name
+        'generated_by': request.user.full_name if hasattr(request.user, 'full_name') else 'Admin',
+        'has_transactions': len(transactions) > 0,
     }
     
+    # Render template
+    template = get_template('adminapp/vouchers/tenant_statement_pdf.html')
     html = template.render(context)
     
-    # Create PDF
+    # Create PDF response
     response = HttpResponse(content_type='application/pdf')
-    response['Content-Disposition'] = f'attachment; filename="tenant_statement_{tenant.company_name}_{date_filter}_{today}.pdf"'
+    safe_tenant_name = tenant.company_name.replace(' ', '_').replace('/', '_')
+    filename = f"tenant_statement_{safe_tenant_name}_{date_filter}_{today.strftime('%Y%m%d')}.pdf"
+    response['Content-Disposition'] = f'inline; filename="{filename}"'
     
-    pisa_status = pisa.CreatePDF(html, dest=response)
+    # Generate PDF
+    pisa_status = pisa.CreatePDF(
+        io.BytesIO(html.encode("UTF-8")),
+        dest=response,
+        encoding='UTF-8'
+    )
     
     if pisa_status.err:
-        return HttpResponse('We had some errors <pre>' + html + '</pre>')
+        return HttpResponse(f'<h1>PDF Generation Error</h1><pre>{html}</pre>')
     
     return response
+
+
 
 
 # ADMIN WORKINGS
@@ -14722,10 +14941,6 @@ def spot_purchase_profit_loss_report_print(request):
     """
     Generate comprehensive print report with correct calculations
     """
-    from datetime import datetime
-    from django.db.models import Sum, Q
-    from decimal import Decimal
-    from django.shortcuts import render
     
     # Get filter parameters
     quick_filter = request.GET.get('quick_filter', '')
@@ -16912,11 +17127,11 @@ def test_notification(request):
     return redirect('adminapp:notification_list')
 
 
-
 def local_purchase_profit_loss_report(request):
     """
     Generate profit/loss report for local purchases with filters and date range
     Only shows active records from all related models
+    Fixed to match spot purchase overhead calculations exactly
     """
     from datetime import datetime, timedelta
     from django.db.models import Q, Sum, Count
@@ -17026,17 +17241,38 @@ def local_purchase_profit_loss_report(request):
                 )
                 return render(request, 'local_purchase_profit_loss_report.html', context)
         
-        # Get processing overhead total (ONLY ACTIVE RECORDS)
-        processing_overhead_total = ProcessingOverhead.objects.filter(
-            is_active=True
-        ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
+        # Get overhead totals (LOCAL PURCHASES DON'T HAVE PEELING)
+        # FIXED: Get ALL active overhead records and sum them - EXACTLY like print version
+        purchase_overheads = PurchaseOverhead.objects.filter(is_active=True)
+        purchase_overhead_total = Decimal('0.00')
+        if purchase_overheads.exists():
+            for overhead in purchase_overheads:
+                if hasattr(overhead, 'other_expenses') and overhead.other_expenses:
+                    purchase_overhead_total += Decimal(str(overhead.other_expenses))
+        
+        processing_overheads = ProcessingOverhead.objects.filter(is_active=True)
+        processing_overhead_total = Decimal('0.00')
+        if processing_overheads.exists():
+            for overhead in processing_overheads:
+                if hasattr(overhead, 'amount') and overhead.amount:
+                    processing_overhead_total += Decimal(str(overhead.amount))
+        
+        shipment_overheads = ShipmentOverhead.objects.filter(is_active=True)
+        shipment_overhead_total = Decimal('0.00')
+        if shipment_overheads.exists():
+            for overhead in shipment_overheads:
+                if hasattr(overhead, 'amount') and overhead.amount:
+                    shipment_overhead_total += Decimal(str(overhead.amount))
         
         # Calculate profit/loss for each purchase
         report_data = []
         summary = {
             'total_purchases': 0,
             'total_purchase_amount': Decimal('0.00'),
+            'total_purchase_overhead': Decimal('0.00'),
             'total_processing_overhead': Decimal('0.00'),
+            'total_shipment_overhead': Decimal('0.00'),
+            'total_all_overheads': Decimal('0.00'),
             'total_freezing_tariff': Decimal('0.00'),
             'total_cost': Decimal('0.00'),
             'total_revenue': Decimal('0.00'),
@@ -17050,7 +17286,7 @@ def local_purchase_profit_loss_report(request):
             # Get purchase cost
             purchase_cost = purchase.total_amount or Decimal('0.00')
             
-            # Calculate freezing revenue and collect total kg for processing overhead
+            # Calculate freezing revenue and collect total kg for overhead calculations
             freezing_revenue = Decimal('0.00')
             total_kg = Decimal('0.00')
             total_freezing_tariff = Decimal('0.00')
@@ -17100,11 +17336,25 @@ def local_purchase_profit_loss_report(request):
                         tariff_cost = (item.kg or Decimal('0.00')) * Decimal(str(item.freezing_category.tariff))
                         total_freezing_tariff += tariff_cost
             
-            # Calculate processing overhead for this purchase
+            # FIXED: Calculate ALL overheads EXACTLY like print version
+            # ALL rates multiply by TOTAL PRODUCTION QUANTITY (total_kg)
+            purchase_overhead_amount = total_kg * purchase_overhead_total
             processing_overhead_amount = total_kg * processing_overhead_total
+            shipment_overhead_amount = total_kg * shipment_overhead_total
             
-            # Calculate total cost (no peeling expenses for local purchases)
-            total_cost = purchase_cost + processing_overhead_amount + total_freezing_tariff
+            # Calculate total of all overheads (NO peeling for local purchases)
+            total_all_overheads = (
+                purchase_overhead_amount + 
+                processing_overhead_amount + 
+                shipment_overhead_amount
+            )
+            
+            # Calculate total cost including ALL overheads
+            total_cost = (
+                purchase_cost + 
+                total_all_overheads + 
+                total_freezing_tariff
+            )
             
             # Calculate profit/loss
             profit_loss = freezing_revenue - total_cost
@@ -17132,7 +17382,10 @@ def local_purchase_profit_loss_report(request):
                 'voucher_number': purchase.voucher_number,
                 'party_name': purchase.party_name.party if purchase.party_name else 'N/A',
                 'purchase_amount': float(purchase_cost),
+                'purchase_overhead': float(purchase_overhead_amount),
                 'processing_overhead': float(processing_overhead_amount),
+                'shipment_overhead': float(shipment_overhead_amount),
+                'total_all_overheads': float(total_all_overheads),
                 'freezing_tariff': float(total_freezing_tariff),
                 'total_cost': float(total_cost),
                 'freezing_revenue': float(freezing_revenue),
@@ -17154,7 +17407,10 @@ def local_purchase_profit_loss_report(request):
             
             # Update summary
             summary['total_purchase_amount'] += purchase_cost
+            summary['total_purchase_overhead'] += purchase_overhead_amount
             summary['total_processing_overhead'] += processing_overhead_amount
+            summary['total_shipment_overhead'] += shipment_overhead_amount
+            summary['total_all_overheads'] += total_all_overheads
             summary['total_freezing_tariff'] += total_freezing_tariff
             summary['total_cost'] += total_cost
             summary['total_revenue'] += freezing_revenue
@@ -17162,18 +17418,29 @@ def local_purchase_profit_loss_report(request):
         
         # Calculate final summary
         summary['total_purchases'] = len(report_data)
+        
+        # Recalculate total_all_overheads from the three overhead components
+        summary['total_all_overheads'] = (
+            summary['total_purchase_overhead'] + 
+            summary['total_processing_overhead'] + 
+            summary['total_shipment_overhead']
+        )
+        
         if summary['total_cost'] > 0:
             summary['overall_profit_margin'] = float(summary['total_profit_loss'] / summary['total_cost'] * 100)
         else:
             summary['overall_profit_margin'] = 0
         
         # Convert Decimal to float for JSON serialization
-        for key in ['total_purchase_amount', 'total_processing_overhead', 
-                   'total_freezing_tariff', 'total_cost', 'total_revenue', 'total_profit_loss']:
+        for key in ['total_purchase_amount', 'total_purchase_overhead', 'total_processing_overhead',
+                   'total_shipment_overhead', 'total_all_overheads', 'total_freezing_tariff', 
+                   'total_cost', 'total_revenue', 'total_profit_loss']:
             summary[key] = float(summary[key])
         
-        # Add processing overhead info to summary
+        # Add overhead rates to summary
+        summary['purchase_overhead_rate'] = float(purchase_overhead_total)
         summary['processing_overhead_rate'] = float(processing_overhead_total)
+        summary['shipment_overhead_rate'] = float(shipment_overhead_total)
         
         # Sort by date (newest first)
         report_data.sort(key=lambda x: x['date'], reverse=True)
@@ -17397,24 +17664,34 @@ def calculate_quick_filter_dates(filter_type, today):
 
 def local_purchase_profit_loss_report_print(request):
     """
-    Generate print-optimized profit/loss report for local purchases
-    This view inherits all filters from the main report view
+    Generate comprehensive print report with correct calculations matching spot purchase format
     """
-    from datetime import datetime, timedelta
-    from django.db.models import Q, Sum, Count, Prefetch
+    from datetime import datetime
+    from django.db.models import Sum
     from decimal import Decimal
-    from django.http import JsonResponse
     from django.shortcuts import render
-    import calendar
     
-    # Get filter parameters - same as main view
+    # Get filter parameters
     quick_filter = request.GET.get('quick_filter', '')
     start_date = request.GET.get('start_date')
     end_date = request.GET.get('end_date')
+    
+    # Filters
     selected_parties = request.GET.getlist('parties')
+    selected_items = request.GET.getlist('items')
+    selected_item_categories = request.GET.getlist('item_categories')
+    selected_item_qualities = request.GET.getlist('item_qualities')
+    selected_item_types = request.GET.getlist('item_types')
+    selected_item_grades = request.GET.getlist('item_grades')
+    selected_item_brands = request.GET.getlist('item_brands')
+    selected_freezing_categories = request.GET.getlist('freezing_categories')
+    selected_processing_centers = request.GET.getlist('processing_centers')
+    selected_stores = request.GET.getlist('stores')
+    selected_packing_units = request.GET.getlist('packing_units')
+    selected_glaze_percentages = request.GET.getlist('glaze_percentages')
     profit_filter = request.GET.get('profit_filter', 'all')
     
-    # Calculate dates based on quick filter or use today as default
+    # Calculate dates
     today = datetime.now().date()
     
     if quick_filter:
@@ -17422,7 +17699,6 @@ def local_purchase_profit_loss_report_print(request):
         start_date = start_date_obj.strftime('%Y-%m-%d')
         end_date = end_date_obj.strftime('%Y-%m-%d')
     else:
-        # Default to today if no dates specified
         if not start_date:
             start_date = today.strftime('%Y-%m-%d')
         if not end_date:
@@ -17432,64 +17708,120 @@ def local_purchase_profit_loss_report_print(request):
             start_date_obj = datetime.strptime(start_date, '%Y-%m-%d').date()
             end_date_obj = datetime.strptime(end_date, '%Y-%m-%d').date()
         except ValueError:
-            error_msg = 'Invalid date format. Use YYYY-MM-DD'
-            context = {
-                'error': error_msg, 
-                'report_data': [],
-                'summary': {},
-                'quick_filter': quick_filter,
-                'start_date': start_date,
-                'end_date': end_date,
-                'date_range_text': get_date_range_text(quick_filter, start_date, end_date)
-            }
+            context = {'error': 'Invalid date format'}
             return render(request, 'local_purchase_profit_loss_report_print.html', context)
-
+    
     try:
-        # Base query for local purchases within date range with all related data
+        # Get USD rate from Settings
+        try:
+            active_settings = Settings.objects.filter(is_active=True).first()
+            usd_rate = active_settings.dollar_rate_to_inr if active_settings else Decimal('84.00')
+        except:
+            usd_rate = Decimal('84.00')
+        
+        # Base query
         local_purchases = LocalPurchase.objects.filter(
             date__range=[start_date_obj, end_date_obj]
         ).prefetch_related(
-            'items__item', 
+            'items__item',
+            'items__item__category',
             'items__item_quality',
-            'items__species',
             'items__item_type',
             'items__grade',
             'party_name'
         ).select_related('party_name')
         
-        # Apply filters - same as main view
+        # Apply filters
         if selected_parties:
             local_purchases = local_purchases.filter(party_name__id__in=selected_parties)
         
+        if selected_items:
+            local_purchases = local_purchases.filter(items__item__id__in=selected_items).distinct()
+        
+        if selected_item_categories:
+            local_purchases = local_purchases.filter(items__item__category__id__in=selected_item_categories).distinct()
+        
+        if selected_item_qualities:
+            local_purchases = local_purchases.filter(items__item_quality__id__in=selected_item_qualities).distinct()
+        
+        if selected_item_types:
+            local_purchases = local_purchases.filter(items__item_type__id__in=selected_item_types).distinct()
+        
+        if selected_item_grades:
+            local_purchases = local_purchases.filter(items__grade__id__in=selected_item_grades).distinct()
+        
+        # Apply freezing-level filters
+        if any([selected_item_brands, selected_freezing_categories, selected_processing_centers, 
+                selected_stores, selected_packing_units, selected_glaze_percentages]):
+            
+            freezing_query = FreezingEntryLocalItem.objects.all()
+            
+            if selected_item_brands:
+                freezing_query = freezing_query.filter(brand__id__in=selected_item_brands)
+            if selected_freezing_categories:
+                freezing_query = freezing_query.filter(freezing_category__id__in=selected_freezing_categories)
+            if selected_processing_centers:
+                freezing_query = freezing_query.filter(processing_center__id__in=selected_processing_centers)
+            if selected_stores:
+                freezing_query = freezing_query.filter(store__id__in=selected_stores)
+            if selected_packing_units:
+                freezing_query = freezing_query.filter(unit__id__in=selected_packing_units)
+            if selected_glaze_percentages:
+                freezing_query = freezing_query.filter(glaze__id__in=selected_glaze_percentages)
+            
+            matching_purchase_ids = freezing_query.values_list(
+                'freezing_entry__party__id', flat=True
+            ).distinct()
+            
+            local_purchases = local_purchases.filter(id__in=matching_purchase_ids)
+        
         if not local_purchases.exists():
-            message = f'No local purchases found for the selected criteria'
             context = {
-                'message': message, 
+                'message': 'No local purchases found',
                 'report_data': [],
-                'summary': {},
-                'quick_filter': quick_filter,
-                'start_date': start_date,
-                'end_date': end_date,
-                'selected_parties': selected_parties,
-                'profit_filter': profit_filter,
-                'date_range_text': get_date_range_text(quick_filter, start_date, end_date),
+                'usd_rate': float(usd_rate),
+                'date_range_text': get_date_range_text(quick_filter, start_date, end_date)
             }
             return render(request, 'local_purchase_profit_loss_report_print.html', context)
         
-        # Get processing overhead total (active records only)
-        try:
-            processing_overhead_total = ProcessingOverhead.objects.filter(
-                is_active=True
-            ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
-        except:
-            processing_overhead_total = Decimal('0.00')
+        # Get overhead totals (LOCAL PURCHASES DON'T HAVE PEELING)
+        # FIXED: Get ALL active overhead records and sum them
+        purchase_overheads = PurchaseOverhead.objects.filter(is_active=True)
+        purchase_overhead_total = Decimal('0.00')
+        if purchase_overheads.exists():
+            for overhead in purchase_overheads:
+                if hasattr(overhead, 'other_expenses') and overhead.other_expenses:
+                    purchase_overhead_total += Decimal(str(overhead.other_expenses))
         
-        # Calculate profit/loss for each purchase with detailed breakdown
+        processing_overheads = ProcessingOverhead.objects.filter(is_active=True)
+        processing_overhead_total = Decimal('0.00')
+        if processing_overheads.exists():
+            for overhead in processing_overheads:
+                if hasattr(overhead, 'amount') and overhead.amount:
+                    processing_overhead_total += Decimal(str(overhead.amount))
+        
+        shipment_overheads = ShipmentOverhead.objects.filter(is_active=True)
+        shipment_overhead_total = Decimal('0.00')
+        if shipment_overheads.exists():
+            for overhead in shipment_overheads:
+                if hasattr(overhead, 'amount') and overhead.amount:
+                    shipment_overhead_total += Decimal(str(overhead.amount))
+        
+        # DEBUG OUTPUT (remove in production)
+        print(f"Purchase Overhead Total: {purchase_overhead_total}")
+        print(f"Processing Overhead Total: {processing_overhead_total}")
+        print(f"Shipment Overhead Total: {shipment_overhead_total}")
+        
+        # Process each purchase
         report_data = []
         summary = {
             'total_purchases': 0,
+            'total_purchase_quantity': Decimal('0.00'),
             'total_purchase_amount': Decimal('0.00'),
+            'total_purchase_overhead': Decimal('0.00'),
             'total_processing_overhead': Decimal('0.00'),
+            'total_shipment_overhead': Decimal('0.00'),
+            'total_all_overheads': Decimal('0.00'),
             'total_freezing_tariff': Decimal('0.00'),
             'total_cost': Decimal('0.00'),
             'total_revenue': Decimal('0.00'),
@@ -17500,193 +17832,280 @@ def local_purchase_profit_loss_report_print(request):
         }
         
         for purchase in local_purchases:
-            # Get purchase cost
-            purchase_cost = purchase.total_amount or Decimal('0.00')
+            # 1. PURCHASE QUANTITY = total_quantity
+            purchase_quantity = purchase.total_quantity or Decimal('0.00')
             
-            # Get freezing entries for this local purchase
-            try:
-                freezing_entries = FreezingEntryLocal.objects.filter(
-                    party=purchase
-                ).prefetch_related(
-                    'items__item',
-                    'items__item_quality',
-                    'items__species',
-                    'items__peeling_type',
-                    'items__grade__species',
-                    'items__processing_center',
-                    'items__store',
-                    'items__unit',
-                    'items__glaze',
-                    'items__freezing_category',
-                    'items__brand'
-                )
-            except:
-                freezing_entries = []
+            # 2. PURCHASE AMOUNT = total_amount
+            purchase_amount = purchase.total_amount or Decimal('0.00')
             
-            # Calculate freezing revenue and collect freezing items details
+            # 3. COST/KG = purchase_amount / purchase_quantity
+            cost_per_kg = Decimal('0.00')
+            if purchase_quantity > 0:
+                cost_per_kg = purchase_amount / purchase_quantity
+            
+            # Get freezing entries
+            freezing_entries = FreezingEntryLocal.objects.filter(
+                party=purchase
+            ).prefetch_related(
+                'items__item',
+                'items__item_quality',
+                'items__peeling_type',
+                'items__grade',
+                'items__processing_center',
+                'items__store',
+                'items__unit',
+                'items__glaze',
+                'items__freezing_category',
+                'items__brand'
+            )
+            
+            # Calculate freezing revenue and items
             freezing_revenue = Decimal('0.00')
             freezing_items = []
-            total_kg = Decimal('0.00')
+            total_freezing_kg = Decimal('0.00')
+            total_freezing_usd = Decimal('0.00')
             total_freezing_tariff = Decimal('0.00')
             freezing_tariff_breakdown = []
+            processing_details = []
             
             for entry in freezing_entries:
                 for item in entry.items.all():
-                    try:
-                        item_revenue = item.usd_rate_item_to_inr or Decimal('0.00')
-                        freezing_revenue += item_revenue
-                        total_kg += item.kg or Decimal('0.00')
+                    item_revenue = item.usd_rate_item_to_inr or Decimal('0.00')
+                    item_usd = item.usd_rate_item or Decimal('0.00')
+                    freezing_revenue += item_revenue
+                    total_freezing_usd += item_usd
+                    total_freezing_kg += item.kg or Decimal('0.00')
+                    
+                    # Freezing tariff
+                    item_tariff_cost = Decimal('0.00')
+                    if (item.freezing_category and 
+                        item.freezing_category.is_active and 
+                        hasattr(item.freezing_category, 'tariff') and 
+                        item.freezing_category.tariff):
+                        item_tariff_cost = (item.kg or Decimal('0.00')) * Decimal(str(item.freezing_category.tariff))
+                        total_freezing_tariff += item_tariff_cost
                         
-                        # Calculate freezing category tariff
-                        item_tariff_cost = Decimal('0.00')
-                        if item.freezing_category and hasattr(item.freezing_category, 'tariff') and item.freezing_category.tariff:
-                            item_tariff_cost = (item.kg or Decimal('0.00')) * Decimal(str(item.freezing_category.tariff))
-                            total_freezing_tariff += item_tariff_cost
-                            
-                            # Add to tariff breakdown
-                            existing_category = next((t for t in freezing_tariff_breakdown if t['category_name'] == item.freezing_category.name), None)
-                            if existing_category:
-                                existing_category['quantity'] += float(item.kg or 0)
-                                existing_category['amount'] += float(item_tariff_cost)
-                            else:
-                                freezing_tariff_breakdown.append({
-                                    'category_name': item.freezing_category.name,
-                                    'tariff_rate': float(item.freezing_category.tariff),
-                                    'quantity': float(item.kg or 0),
-                                    'amount': float(item_tariff_cost),
-                                    'kg': float(item.kg or 0)
-                                })
-                        
-                        # Add to freezing items details
-                        freezing_items.append({
-                            'item_name': item.item.name if item.item else 'N/A',
-                            'item_quality': item.item_quality.quality if item.item_quality else 'N/A',
-                            'species': item.species.name if item.species else 'N/A',
-                            'peeling_type': item.peeling_type.name if item.peeling_type else 'N/A',
-                            'processing_center': item.processing_center.name if item.processing_center else 'N/A',
-                            'store': item.store.name if item.store else 'N/A',
-                            'freezing_category': item.freezing_category.name if item.freezing_category else 'N/A',
-                            'kg': float(item.kg or 0),
-                            'usd_rate_per_kg': float(item.usd_rate_per_kg or 0),
-                            'usd_rate_item': float(item.usd_rate_item or 0),
-                            'usd_rate_item_to_inr': float(item.usd_rate_item_to_inr or 0),
-                            'slab_quantity': float(item.slab_quantity or 0),
-                            'c_s_quantity': float(item.c_s_quantity or 0),
-                            'unit': item.unit.unit_code if item.unit else 'N/A',
-                            'glaze': f"{item.glaze.percentage}%" if item.glaze else 'N/A',
-                            'brand': item.brand.name if item.brand else 'N/A',
-                            'grade': f"{item.grade.species.name} - {item.grade.grade}" if item.grade and item.grade.species else 'N/A',
-                            'tariff_cost': float(item_tariff_cost)
-                        })
-                    except Exception as e:
-                        continue
+                        # Tariff breakdown
+                        existing = next((t for t in freezing_tariff_breakdown 
+                                       if t['category_name'] == item.freezing_category.name), None)
+                        if existing:
+                            existing['quantity'] += float(item.kg or 0)
+                            existing['amount'] += float(item_tariff_cost)
+                        else:
+                            freezing_tariff_breakdown.append({
+                                'category_name': item.freezing_category.name,
+                                'tariff_rate': float(item.freezing_category.tariff),
+                                'quantity': float(item.kg or 0),
+                                'amount': float(item_tariff_cost)
+                            })
+                    
+                    # Processing details
+                    processing_details.append({
+                        'item_quality': item.item_quality.quality if item.item_quality else 'N/A',
+                        'packing': f"{item.unit.unit_code if item.unit else ''} - {item.glaze.percentage if item.glaze else ''}%",
+                        'unit': item.unit.unit_code if item.unit else 'N/A',
+                        'grade': f"{item.peeling_type.name if item.peeling_type else ''}, {item.grade.grade if item.grade else ''}",
+                        'total_slab': float(item.slab_quantity or 0),
+                        'total_quantity': float(item.kg or 0),
+                        'price_usd': float(item.usd_rate_per_kg or 0),
+                        'amount_usd': float(item.usd_rate_item or 0),
+                        'amount_inr': float(item.usd_rate_item_to_inr or 0)
+                    })
+                    
+                    # Freezing items
+                    freezing_items.append({
+                        'item_name': item.item.name if item.item else 'N/A',
+                        'item_quality': item.item_quality.quality if item.item_quality else 'N/A',
+                        'peeling_type': item.peeling_type.name if item.peeling_type else 'N/A',
+                        'processing_center': item.processing_center.name if item.processing_center else 'N/A',
+                        'store': item.store.name if item.store else 'N/A',
+                        'freezing_category': item.freezing_category.name if item.freezing_category else 'N/A',
+                        'kg': float(item.kg or 0),
+                        'usd_rate_per_kg': float(item.usd_rate_per_kg or 0),
+                        'usd_rate_item': float(item.usd_rate_item or 0),
+                        'usd_rate_item_to_inr': float(item.usd_rate_item_to_inr or 0),
+                        'slab_quantity': float(item.slab_quantity or 0),
+                        'c_s_quantity': float(item.c_s_quantity or 0),
+                        'unit': item.unit.unit_code if item.unit else 'N/A',
+                        'glaze': f"{item.glaze.percentage}%" if item.glaze else 'N/A',
+                        'brand': item.brand.name if item.brand else 'N/A',
+                        'grade': f"{item.grade.grade if item.grade else 'N/A'}",
+                        'tariff_cost': float(item_tariff_cost)
+                    })
             
-            # Calculate processing overhead for this purchase
-            processing_overhead_amount = total_kg * processing_overhead_total
+            # Calculate overheads - ALL rates multiply by TOTAL PRODUCTION QUANTITY
+            purchase_overhead_amount = total_freezing_kg * purchase_overhead_total
+            processing_overhead_amount = total_freezing_kg * processing_overhead_total
+            shipment_overhead_amount = total_freezing_kg * shipment_overhead_total
             
-            # Calculate total cost (no peeling expenses for local purchases)
-            total_cost = purchase_cost + processing_overhead_amount + total_freezing_tariff
+            # TOTAL PROCESSING EXP = sum of all overheads
+            total_all_overheads = (
+                purchase_overhead_amount +
+                processing_overhead_amount +
+                shipment_overhead_amount
+            )
             
-            # Calculate profit/loss
-            profit_loss = freezing_revenue - total_cost
+            # INCOME = TOTAL AMOUNT/INR - TOTAL PROCESSING EXP
+            income = freezing_revenue - total_all_overheads
             
-            # Calculate profit percentage
-            if total_cost > 0:
-                profit_percentage = (profit_loss / total_cost * 100)
+            # PROCESSING OVERHEADS PER KG
+            processing_overhead_per_kg = Decimal('0.00')
+            if total_freezing_kg > 0:
+                processing_overhead_per_kg = total_all_overheads / total_freezing_kg
+            
+            # Calculate totals
+            total_slabs = sum(detail['total_slab'] for detail in processing_details)
+            avg_price_usd = Decimal('0.00')
+            if total_freezing_kg > 0:
+                avg_price_usd = total_freezing_usd / total_freezing_kg
+            
+            # Grand Total Cost
+            grand_total_cost = (
+                purchase_amount +
+                purchase_overhead_amount +
+                processing_overhead_amount +
+                shipment_overhead_amount +
+                total_freezing_tariff
+            )
+            
+            # Total Profit/Loss
+            total_profit_loss = freezing_revenue - grand_total_cost
+            
+            # Profit/Loss Per KG
+            profit_loss_per_kg = Decimal('0.00')
+            if total_freezing_kg > 0:
+                profit_loss_per_kg = total_profit_loss / total_freezing_kg
+            
+            if grand_total_cost > 0:
+                profit_percentage = (total_profit_loss / grand_total_cost * 100)
             else:
                 profit_percentage = Decimal('0.00')
             
-            # Determine profit status
-            if profit_loss > 0:
+            if total_profit_loss > 0:
                 profit_status = 'Profit'
                 summary['profit_count'] += 1
-            elif profit_loss < 0:
+            elif total_profit_loss < 0:
                 profit_status = 'Loss'
                 summary['loss_count'] += 1
             else:
                 profit_status = 'Break Even'
                 summary['break_even_count'] += 1
             
-            # Get purchase items details
+            # Apply profit filter
+            if profit_filter == 'profit' and total_profit_loss <= 0:
+                continue
+            elif profit_filter == 'loss' and total_profit_loss >= 0:
+                continue
+            
+            # Get purchase items
             purchase_items = []
+            purchase_item_names = []
             for item in purchase.items.all():
+                item_name = item.item.name if item.item else 'N/A'
                 purchase_items.append({
-                    'item_name': item.item.name if item.item else 'N/A',
+                    'item_name': item_name,
                     'item_quality': item.item_quality.quality if item.item_quality else 'N/A',
-                    'species': item.species.name if item.species else 'N/A',
                     'item_type': item.item_type.name if item.item_type else 'N/A',
-                    'grade': f"{item.grade.species.name} - {item.grade.grade}" if item.grade and item.grade.species else 'N/A',
+                    'grade': f"{item.grade.grade if item.grade else 'N/A'}",
                     'quantity': float(item.quantity or 0),
                     'rate': float(item.rate or 0),
                     'amount': float(item.amount or 0)
                 })
+                if item.item and item.item.name and item.item.name not in purchase_item_names:
+                    purchase_item_names.append(item.item.name)
+            
+            purchase_item_names_str = ', '.join(purchase_item_names) if purchase_item_names else 'N/A'
+            
+            # Overhead breakdown - FIXED: Now showing individual overheads correctly
+            overhead_breakdown = [
+                {'type': 'Purchase Overhead', 'rate': float(purchase_overhead_total), 'amount': float(purchase_overhead_amount)},
+                {'type': 'Processing Overhead', 'rate': float(processing_overhead_total), 'amount': float(processing_overhead_amount)},
+                {'type': 'Shipment Overhead', 'rate': float(shipment_overhead_total), 'amount': float(shipment_overhead_amount)},
+            ]
             
             purchase_data = {
                 'id': purchase.id,
                 'date': purchase.date,
                 'voucher_number': purchase.voucher_number or '',
-                'party_name': purchase.party_name.party if purchase.party_name else 'N/A',  # FIXED: changed .name to .party
-                'purchase_amount': float(purchase_cost),
+                'party_name': purchase.party_name.party if purchase.party_name else 'N/A',
+                
+                # Calculations
+                'purchase_quantity': float(purchase_quantity),
+                'purchase_amount': float(purchase_amount),
+                'cost_per_kg': float(cost_per_kg),
+                
+                'purchase_overhead': float(purchase_overhead_amount),
                 'processing_overhead': float(processing_overhead_amount),
+                'shipment_overhead': float(shipment_overhead_amount),
                 'freezing_tariff': float(total_freezing_tariff),
-                'total_cost': float(total_cost),
+                
+                'total_all_overheads': float(total_all_overheads),
+                'income': float(income),
+                'processing_overhead_per_kg': float(processing_overhead_per_kg),
+                'total_slabs': total_slabs,
+                'avg_price_usd': float(avg_price_usd),
+                'total_kg_processed': float(total_freezing_kg),
+                
+                'grand_total_cost': float(grand_total_cost),
                 'freezing_revenue': float(freezing_revenue),
-                'profit_loss': float(profit_loss),
+                'total_freezing_usd': float(total_freezing_usd),
+                'total_freezing_kg': float(total_freezing_kg),
+                
+                'total_profit_loss': float(total_profit_loss),
+                'profit_loss_per_kg': float(profit_loss_per_kg),
                 'profit_percentage': float(profit_percentage),
                 'profit_status': profit_status,
-                'freezing_entries_count': len(freezing_entries),
-                'total_items': sum(entry.items.count() for entry in freezing_entries) if freezing_entries else 0,
-                'total_kg_processed': float(total_kg),
                 
-                # Detailed breakdowns for print report
+                # Detailed breakdowns
                 'purchase_items': purchase_items,
+                'purchase_item_names': purchase_item_names_str,
                 'freezing_items': freezing_items,
                 'freezing_tariff_breakdown': freezing_tariff_breakdown,
-                'processing_overhead_rate': float(processing_overhead_total)
+                'overhead_breakdown': overhead_breakdown,
+                'processing_details': processing_details,
             }
-            
-            # Apply profit filter - same as main view
-            if profit_filter == 'profit' and profit_loss <= 0:
-                continue
-            elif profit_filter == 'loss' and profit_loss >= 0:
-                continue
             
             report_data.append(purchase_data)
             
             # Update summary
-            summary['total_purchase_amount'] += purchase_cost
+            summary['total_purchase_quantity'] += purchase_quantity
+            summary['total_purchase_amount'] += purchase_amount
+            summary['total_purchase_overhead'] += purchase_overhead_amount
             summary['total_processing_overhead'] += processing_overhead_amount
+            summary['total_shipment_overhead'] += shipment_overhead_amount
+            summary['total_all_overheads'] += total_all_overheads
             summary['total_freezing_tariff'] += total_freezing_tariff
-            summary['total_cost'] += total_cost
+            summary['total_cost'] += grand_total_cost
             summary['total_revenue'] += freezing_revenue
-            summary['total_profit_loss'] += profit_loss
+            summary['total_profit_loss'] += total_profit_loss
         
-        # Calculate final summary
+        # Calculate summary
         summary['total_purchases'] = len(report_data)
         if summary['total_cost'] > 0:
             summary['overall_profit_margin'] = float(summary['total_profit_loss'] / summary['total_cost'] * 100)
         else:
             summary['overall_profit_margin'] = 0.0
         
-        # Convert Decimal to float for template
-        for key in ['total_purchase_amount', 'total_processing_overhead',
-                   'total_freezing_tariff', 'total_cost', 'total_revenue', 'total_profit_loss']:
+        # Convert Decimal to float
+        for key in ['total_purchase_quantity', 'total_purchase_amount',
+                   'total_purchase_overhead', 'total_processing_overhead', 'total_shipment_overhead',
+                   'total_all_overheads', 'total_freezing_tariff', 'total_cost', 'total_revenue', 'total_profit_loss']:
             summary[key] = float(summary[key])
         
-        # Add processing overhead info to summary
+        # Add overhead rates
+        summary['purchase_overhead_rate'] = float(purchase_overhead_total)
         summary['processing_overhead_rate'] = float(processing_overhead_total)
+        summary['shipment_overhead_rate'] = float(shipment_overhead_total)
         
-        # Sort by date (newest first)
+        # Sort by date
         report_data.sort(key=lambda x: x['date'], reverse=True)
         
         context = {
             'report_data': report_data,
             'summary': summary,
-            'quick_filter': quick_filter,
+            'usd_rate': float(usd_rate),
             'start_date': start_date,
             'end_date': end_date,
-            'selected_parties': selected_parties,
-            'profit_filter': profit_filter,
             'date_range_text': get_date_range_text(quick_filter, start_date, end_date),
         }
         
@@ -17694,18 +18113,12 @@ def local_purchase_profit_loss_report_print(request):
         
     except Exception as e:
         import traceback
-        error_msg = f'An error occurred: {str(e)}'
-        print(f"DEBUG - Print view error:\n{traceback.format_exc()}")
-        
+        traceback.print_exc()
         context = {
-            'error': error_msg, 
+            'error': f'An error occurred: {str(e)}',
             'report_data': [],
-            'summary': {},
-            'quick_filter': quick_filter,
-            'start_date': start_date,
-            'end_date': end_date,
-            'date_range_text': get_date_range_text(quick_filter, start_date, end_date),
+            'usd_rate': float(usd_rate) if 'usd_rate' in locals() else 84.00,
+            'date_range_text': get_date_range_text(quick_filter, start_date, end_date) if 'quick_filter' in locals() else 'N/A'
         }
         return render(request, 'local_purchase_profit_loss_report_print.html', context)
-
 

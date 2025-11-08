@@ -436,7 +436,7 @@ class SpotPurchase(BaseModel):
     agent = models.ForeignKey('PurchasingAgent', on_delete=models.CASCADE)
 
     total_amount = models.DecimalField(max_digits=100, decimal_places=2, default=0)
-    total_quantity = models.DecimalField(max_digits=100, decimal_places=2, default=0)
+    total_quantity = models.DecimalField(max_digits=100, decimal_places=3, default=0)
     total_items = models.IntegerField(null=True, blank=True)
     total_purchase_amount = models.DecimalField(max_digits=100, decimal_places=2, default=0)
     total_purchase_amount_per_kg = models.DecimalField(max_digits=100, decimal_places=20, default=0)
@@ -484,7 +484,7 @@ class SpotPurchase(BaseModel):
 class SpotPurchaseItem(BaseModel):
     purchase = models.ForeignKey(SpotPurchase, on_delete=models.CASCADE, related_name='items')
     item = models.ForeignKey('Item', on_delete=models.CASCADE)
-    quantity = models.DecimalField(max_digits=100, decimal_places=2)
+    quantity = models.DecimalField(max_digits=100, decimal_places=3)
     boxes = models.DecimalField(max_digits=100, decimal_places=2, null=True, blank=True)
     total_rate = models.DecimalField(max_digits=100, decimal_places=2)
     rate = models.DecimalField(max_digits=100, decimal_places=2)
@@ -534,7 +534,7 @@ class LocalPurchase(BaseModel):
     voucher_number = models.CharField(max_length=20, unique=True)
     party_name = models.ForeignKey('LocalParty', on_delete=models.CASCADE)
     total_amount = models.DecimalField(max_digits=100, decimal_places=2, default=0)
-    total_quantity = models.DecimalField(max_digits=100, decimal_places=2, default=0)
+    total_quantity = models.DecimalField(max_digits=100, decimal_places=3, default=0)
     total_items = models.IntegerField(null=True, blank=True)
 
     def __str__(self):
@@ -547,7 +547,7 @@ class LocalPurchaseItem(BaseModel):
     species = models.ForeignKey(Species, on_delete=models.CASCADE,null=True, blank=True)
     item_type = models.ForeignKey(ItemType, on_delete=models.CASCADE, null=True, blank=True)
     grade = models.ForeignKey(ItemGrade, on_delete=models.CASCADE, null=True, blank=True)
-    quantity = models.DecimalField(max_digits=100, decimal_places=2)
+    quantity = models.DecimalField(max_digits=100, decimal_places=3)
     rate = models.DecimalField(max_digits=100, decimal_places=2)
     amount = models.DecimalField(max_digits=100, decimal_places=2)
 
@@ -571,7 +571,7 @@ class PeelingShedSupply(models.Model):
     spot_purchase = models.ForeignKey('SpotPurchase', on_delete=models.CASCADE)
     spot_purchase_item = models.ForeignKey('SpotPurchaseItem', on_delete=models.CASCADE)
     SpotPurchase_total_boxes = models.PositiveIntegerField()
-    SpotPurchase_quantity = models.DecimalField(max_digits=100, decimal_places=2)
+    SpotPurchase_quantity = models.DecimalField(max_digits=100, decimal_places=3)
     SpotPurchase_average_box_weight = models.DecimalField(max_digits=100, decimal_places=50, default=0)
     boxes_received_shed = models.PositiveIntegerField(default=0)
     SpotPurchase_balance_boxes = models.PositiveIntegerField(default=0)
@@ -639,7 +639,7 @@ class FreezingEntrySpotItem(BaseModel):
     grade = models.ForeignKey('ItemGrade', on_delete=models.CASCADE, null=True, blank=True  )
     slab_quantity = models.DecimalField(max_digits=100, decimal_places=2)
     c_s_quantity = models.DecimalField(max_digits=100, decimal_places=2)
-    kg = models.DecimalField(max_digits=100, decimal_places=2)
+    kg = models.DecimalField(max_digits=100, decimal_places=3)
     usd_rate_per_kg = models.DecimalField(max_digits=100, decimal_places=2)
     usd_rate_item = models.DecimalField(max_digits=100, decimal_places=2)
     usd_rate_item_to_inr = models.DecimalField(max_digits=100, decimal_places=2)
@@ -702,7 +702,7 @@ class FreezingEntryLocalItem(BaseModel):
 
     slab_quantity = models.DecimalField(max_digits=100, decimal_places=2, default=0)
     c_s_quantity = models.DecimalField(max_digits=100, decimal_places=2, default=0)
-    kg = models.DecimalField(max_digits=100, decimal_places=2, default=0)
+    kg = models.DecimalField(max_digits=100, decimal_places=3, default=0)
     usd_rate_per_kg = models.DecimalField(max_digits=100, decimal_places=2, default=0)
     usd_rate_item = models.DecimalField(max_digits=100, decimal_places=2, default=0)
     usd_rate_item_to_inr = models.DecimalField(max_digits=100, decimal_places=2, default=0)
@@ -820,7 +820,7 @@ class FreezingEntryTenantItem(BaseModel):
 
     slab_quantity = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     c_s_quantity = models.DecimalField(max_digits=12, decimal_places=2, default=0)
-    kg = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    kg = models.DecimalField(max_digits=12, decimal_places=3, default=0)
 
     def __str__(self):
         return f"{self.item} - {self.kg} KG"
@@ -870,7 +870,7 @@ class ReturnTenantItem(BaseModel):
 
     slab_quantity = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     c_s_quantity = models.DecimalField(max_digits=12, decimal_places=2, default=0)
-    kg = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    kg = models.DecimalField(max_digits=12, decimal_places=3, default=0)
 
     def __str__(self):
         return f"{self.item} - {self.kg} KG (Returned)"
@@ -896,7 +896,7 @@ class PreShipmentWorkOutItem(BaseModel):
     peeling_type = models.ForeignKey('ItemType', on_delete=models.CASCADE)
     grade = models.ForeignKey('ItemGrade', on_delete=models.CASCADE)
     cartons = models.DecimalField(max_digits=100, decimal_places=2, default=0)
-    quantity = models.DecimalField(max_digits=100, decimal_places=2, default=0)
+    quantity = models.DecimalField(max_digits=100, decimal_places=3, default=0)
 
     # we want rate
     usd_rate_per_kg = models.DecimalField(max_digits=100, decimal_places=2, default=0)
@@ -1037,7 +1037,7 @@ class TenantBillItem(models.Model):
 
     slab_quantity = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     c_s_quantity = models.DecimalField(max_digits=12, decimal_places=2, default=0)
-    kg_quantity = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    kg_quantity = models.DecimalField(max_digits=12, decimal_places=3, default=0)
 
     line_total = models.DecimalField(max_digits=12, decimal_places=2, default=0)
 
@@ -1087,7 +1087,7 @@ class Stock(models.Model):
     item_grade = models.ForeignKey(ItemGrade, on_delete=models.SET_NULL, null=True, blank=True)
 
     cs_quantity = models.DecimalField(max_digits=10, decimal_places=2, default=0)
-    kg_quantity = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    kg_quantity = models.DecimalField(max_digits=10, decimal_places=3, default=0)
 
     usd_rate_per_kg = models.DecimalField(max_digits=100, decimal_places=2, default=0)
     usd_rate_item = models.DecimalField(max_digits=100, decimal_places=2, default=0)
@@ -1129,7 +1129,7 @@ class StoreTransferItem(models.Model):
     item_grade = models.ForeignKey(ItemGrade, on_delete=models.SET_NULL, null=True, blank=True)
 
     cs_quantity = models.DecimalField(max_digits=10, decimal_places=2, default=0)
-    kg_quantity = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    kg_quantity = models.DecimalField(max_digits=10, decimal_places=3, default=0)
 
 
 
@@ -1282,7 +1282,7 @@ class SalesEntry(BaseModel):
     igst_number = models.CharField(max_length=50, blank=True, null=True)
     
     # Totals
-    total_quantity = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    total_quantity = models.DecimalField(max_digits=12, decimal_places=3, default=0)
     total_amount_usd = models.DecimalField(max_digits=15, decimal_places=2, default=0)
     total_taxable_value = models.DecimalField(max_digits=15, decimal_places=2, default=0)
     total_tax_amount = models.DecimalField(max_digits=15, decimal_places=2, default=0)
@@ -1339,7 +1339,7 @@ class SalesEntryItem(BaseModel):
     
     # Quantities (Yellow highlighted)
     cartons = models.DecimalField(max_digits=10, decimal_places=2)
-    quantity = models.DecimalField(max_digits=10, decimal_places=2)  # This is "Quantity" in invoice
+    quantity = models.DecimalField(max_digits=10, decimal_places=3)  # This is "Quantity" in invoice
     
     # Pricing (Yellow highlighted)
     price_usd_per_kg = models.DecimalField(max_digits=10, decimal_places=2)
@@ -1525,7 +1525,7 @@ class StockMovement(models.Model):
     
     # Quantities (can be positive or negative)
     cs_quantity = models.DecimalField(max_digits=12, decimal_places=2, default=0)
-    kg_quantity = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    kg_quantity = models.DecimalField(max_digits=12, decimal_places=3, default=0)
     slab_quantity = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     
     # Rates at time of movement
@@ -1576,7 +1576,7 @@ class StockSnapshot(models.Model):
     
     # Closing balances
     cs_quantity = models.DecimalField(max_digits=12, decimal_places=2, default=0)
-    kg_quantity = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    kg_quantity = models.DecimalField(max_digits=12, decimal_places=3, default=0)
     
     created_at = models.DateTimeField(auto_now_add=True)
     

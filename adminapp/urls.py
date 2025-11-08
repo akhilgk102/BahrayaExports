@@ -129,7 +129,7 @@ urlpatterns = [
     path('tenant/list/', views.TenantListView.as_view(), name='tenant_list'),
     path('tenant/update/<str:pk>/', views.TenantUpdateView.as_view(), name='tenant_update'),
     path('tenant/delete/<str:pk>/', views.TenantDeleteView.as_view(), name='tenant_delete'),
-
+ 
     path('purchase-overhead/create/', views.PurchaseOverheadCreateView.as_view(), name='purchase_overhead_create'),
     path('purchase-overhead/list/', views.PurchaseOverheadListView.as_view(), name='purchase_overhead_list'),
     path('purchase-overhead/update/<str:pk>/', views.PurchaseOverheadUpdateView.as_view(), name='purchase_overhead_update'),

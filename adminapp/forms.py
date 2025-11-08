@@ -252,10 +252,6 @@ class TenantForm(forms.ModelForm):
         model = Tenant
         fields = '__all__'
 
-# In your forms.py or views.py
-from django.forms import inlineformset_factory
-from django import forms
-
 class TenantFreezingTariffForm(forms.ModelForm):
     class Meta:
         model = TenantFreezingTariff
@@ -268,9 +264,19 @@ class TenantFreezingTariffForm(forms.ModelForm):
                 'class': 'form-control',
                 'placeholder': 'Enter tariff amount',
                 'min': '0',
+                'step': '0.01',  # Allow decimal values
             }),
         }
+        labels = {
+            'category': 'Freezing Category',
+            'tariff': 'Tariff (₹/kg)',
+        }
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # ✅ FIXED: Use 'category' not 'freezing_category'
+        self.fields['category'].queryset = FreezingCategory.objects.filter(is_active=True)
+        
 TenantFreezingTariffFormSet = inlineformset_factory(
     Tenant,
     TenantFreezingTariff,
@@ -281,6 +287,7 @@ TenantFreezingTariffFormSet = inlineformset_factory(
     validate_min=False,
     validate_max=False,
 )
+
 
 
 
@@ -387,11 +394,10 @@ class LocalPurchaseForm(forms.ModelForm):
 class LocalPurchaseItemForm(forms.ModelForm):
     class Meta:
         model = LocalPurchaseItem
-        exclude = ['purchase', 'amount']
+        exclude = ['purchase', 'amount','species']
         widgets = {
             'item': forms.Select(attrs={'class': 'form-control'}),
             'item_quality': forms.Select(attrs={'class': 'form-control', 'id': 'id_item_quality'}),
-            'species': forms.Select(attrs={'class': 'form-control'}),
             'grade': forms.Select(attrs={'class': 'form-control'}),
             'item_type': forms.Select(attrs={'class': 'form-control'}),
             'quantity': forms.NumberInput(attrs={'class': 'form-control quantity-input', 'step': '0.01'}),
@@ -1063,18 +1069,24 @@ class PeelingShedVoucherForm(forms.ModelForm):
 class TenantVoucherForm(forms.ModelForm):
     class Meta:
         model = TenantVoucher
-        fields = ["voucher_no", "tenant", "date", "description", "receipt", "payment"]  # REMOVED remain_amount and total_amount
+        fields = ["voucher_no", "tenant", "date", "description", "remain_amount", "receipt", "payment", "total_amount"]
         widgets = {
             "voucher_no": forms.TextInput(attrs={"class": "form-control"}),
             "tenant": forms.Select(attrs={"class": "form-control"}),
             "date": forms.DateInput(attrs={"type": "date", "class": "form-control"}),
             "description": forms.Textarea(attrs={"class": "form-control", "rows": 2}),
-            "receipt": forms.NumberInput(attrs={"class": "form-control", "placeholder": "Receipt Amount"}),
-            "payment": forms.NumberInput(attrs={"class": "form-control", "placeholder": "Payment Amount"}),
+            "remain_amount": forms.NumberInput(attrs={'readonly': 'readonly', 'class': 'form-control'}),
+            "receipt": forms.NumberInput(attrs={"class": "form-control"}),
+            "payment": forms.NumberInput(attrs={"class": "form-control"}),
+            "total_amount": forms.NumberInput(attrs={'readonly': 'readonly', 'class': 'form-control'}),
         }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        
+        # Make remain_amount and total_amount not required in the form
+        self.fields['remain_amount'].required = False
+        self.fields['total_amount'].required = False
         
         # Get unique tenants and create choices (in case of duplicate company names)
         unique_tenants = Tenant.objects.values(
@@ -1113,23 +1125,8 @@ class TenantVoucherForm(forms.ModelForm):
         
         # Update form choices
         self.fields['tenant'].choices = tenant_choices
-    
-    def clean(self):
-        cleaned_data = super().clean()
-        receipt = cleaned_data.get('receipt') or 0
-        payment = cleaned_data.get('payment') or 0
-        
-        # Ensure at least one is provided
-        if receipt == 0 and payment == 0:
-            raise forms.ValidationError("Either receipt or payment must be provided")
-        
-        # Ensure only one is provided (optional business rule)
-        if receipt > 0 and payment > 0:
-            raise forms.ValidationError("Please provide either receipt OR payment, not both")
-        
-        return cleaned_data
 
-    
+# --- Stock Form ---  
 
 class StockForm(forms.ModelForm):
     class Meta:
