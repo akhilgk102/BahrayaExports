@@ -1,0 +1,21 @@
+# Django / Python
+*.log
+*.pot
+*.pyc
+__pycache__/
+local_settings.py
+
+# Database
+db.sqlite3
+
+# Media & Static
+media/
+staticfiles/
+
+# Environment files
+.env
+amf_env/
+
+# Editor / System files
+.vscode/
+.DS_Store

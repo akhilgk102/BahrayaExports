@@ -275,10 +275,16 @@ def user_login(request):
     return render(request, 'adminapp/login.html')
 
 
+from django.contrib import messages
+from django.contrib.auth import logout
+from django.shortcuts import redirect
+
 # Admin logout view
 def admin_logout(request):
     logout(request)
+    messages.success(request, "You have successfully logged out.")
     return redirect('adminapp:admin_login')
+
 
 @login_required
 @check_permission('user_management_add')
@@ -4646,7 +4652,6 @@ def get_dollar_rate_pre_workout(request):
             'dollar_rate_to_inr': float(settings_obj.dollar_rate_to_inr)
         })
     return JsonResponse({'error': 'Settings not found'}, status=404)
-
 def get_item_qualities(request):
     item_id = request.GET.get("item_id")
     
@@ -4660,8 +4665,8 @@ def get_item_qualities(request):
         return JsonResponse({"error": "Invalid item_id"}, status=400)
 
     try:
-        # Filter qualities for the given item
-        qualities = ItemQuality.objects.filter(item_id=item_id).values("id", "quality")
+        # Filter qualities for the given item - ADDED 'code' field
+        qualities = ItemQuality.objects.filter(item_id=item_id).values("id", "quality", "code")
         
         # Return as JSON
         return JsonResponse(list(qualities), safe=False)
@@ -11117,6 +11122,7 @@ def get_agent_balance(request):
             "total_receipt": float(total_receipt),
             "total_payment": float(total_payment),
             "remain_amount": float(remain_amount),
+            "agent_name": agent.name, 
         })
 
     except PurchasingAgent.DoesNotExist:
@@ -14122,6 +14128,12 @@ from collections import defaultdict
 import json
 
 def admin_dashboard(request):
+    from django.db.models import Q, Count, Sum
+    from django.db.models.functions import TruncMonth, TruncHour
+    from datetime import datetime, timedelta
+    from collections import defaultdict
+    import json
+    
     # Count incomplete freezing entries from both spot and local freezing
     incomplete_spot_freezing = FreezingEntrySpot.objects.filter(
         Q(freezing_status__iexact='Incomplete') | 
@@ -14144,11 +14156,89 @@ def admin_dashboard(request):
     # Calculate completed entries
     completed_today = total_freezing_entries - incomplete_freezing_count
     
-    # ============ CHART DATA FOR SPOT FREEZING ============
+    # Get current date
+    today = datetime.now().date()
+    twelve_months_ago = datetime.now() - timedelta(days=365)
     
-    # Get current date and last 12 months
-    today = datetime.now()
-    twelve_months_ago = today - timedelta(days=365)
+    # ============ TODAY'S DATA FOR SPOT FREEZING ============
+    
+    # Today's spot freezing entries
+    today_entries = FreezingEntrySpot.objects.filter(
+        freezing_date=today
+    )
+    
+    # Today's summary statistics
+    today_summary = today_entries.aggregate(
+        total_entries=Count('id'),
+        complete_entries=Count('id', filter=Q(freezing_status__iexact='complete')),
+        incomplete_entries=Count('id', filter=~Q(freezing_status__iexact='complete')),
+        total_kg=Sum('total_kg'),
+        total_usd=Sum('total_usd')
+    )
+    
+    today_total_entries = today_summary['total_entries'] or 0
+    today_complete = today_summary['complete_entries'] or 0
+    today_incomplete = today_summary['incomplete_entries'] or 0
+    today_kg = float(today_summary['total_kg'] or 0)
+    today_usd = float(today_summary['total_usd'] or 0)
+    
+    # Today's hourly data for line chart
+    hourly_data_raw = FreezingEntrySpot.objects.filter(
+        freezing_date=today
+    ).values('created_at', 'total_kg', 'total_usd', 'freezing_status')
+    
+    # Group by hour
+    hourly_data = defaultdict(lambda: {'entries': 0, 'kg': 0, 'usd': 0, 'complete': 0, 'incomplete': 0})
+    
+    for entry in hourly_data_raw:
+        hour = entry['created_at'].hour
+        hourly_data[hour]['entries'] += 1
+        hourly_data[hour]['kg'] += float(entry['total_kg'] or 0)
+        hourly_data[hour]['usd'] += float(entry['total_usd'] or 0)
+        
+        if entry['freezing_status'] and entry['freezing_status'].lower() == 'complete':
+            hourly_data[hour]['complete'] += 1
+        else:
+            hourly_data[hour]['incomplete'] += 1
+    
+    # Prepare hourly chart data (24 hours)
+    today_hourly_labels = []
+    today_hourly_entries = []
+    today_hourly_kg = []
+    today_hourly_usd = []
+    today_hourly_complete = []
+    today_hourly_incomplete = []
+    
+    for hour in range(24):
+        today_hourly_labels.append(f"{hour:02d}:00")
+        today_hourly_entries.append(hourly_data[hour]['entries'])
+        today_hourly_kg.append(hourly_data[hour]['kg'])
+        today_hourly_usd.append(hourly_data[hour]['usd'])
+        today_hourly_complete.append(hourly_data[hour]['complete'])
+        today_hourly_incomplete.append(hourly_data[hour]['incomplete'])
+    
+    # Today's status distribution
+    today_status_distribution = FreezingEntrySpot.objects.filter(
+        freezing_date=today
+    ).values('freezing_status').annotate(count=Count('id'))
+    
+    today_status_labels = []
+    today_status_counts = []
+    for status in today_status_distribution:
+        today_status_labels.append((status['freezing_status'] or 'Unknown').title())
+        today_status_counts.append(status['count'])
+    
+    # Today's top 5 items by quantity
+    today_top_items = FreezingEntrySpotItem.objects.filter(
+        freezing_entry__freezing_date=today
+    ).values('item__name').annotate(
+        total_kg=Sum('kg')
+    ).order_by('-total_kg')[:5]
+    
+    today_top_item_names = [item['item__name'] for item in today_top_items]
+    today_top_item_kg = [float(item['total_kg']) for item in today_top_items]
+    
+    # ============ OVERALL CHART DATA FOR SPOT FREEZING (Last 12 months) ============
     
     # Monthly spot freezing data (last 12 months)
     monthly_data = FreezingEntrySpot.objects.filter(
@@ -14178,8 +14268,8 @@ def admin_dashboard(request):
         chart_kg.append(float(data['total_kg'] or 0))
         chart_usd.append(float(data['total_usd'] or 0))
     
-    # Weekly data for last 8 weeks (SQLite-compatible approach)
-    eight_weeks_ago = today - timedelta(weeks=8)
+    # Weekly data for last 8 weeks
+    eight_weeks_ago = datetime.now() - timedelta(weeks=8)
     weekly_entries_raw = FreezingEntrySpot.objects.filter(
         freezing_date__gte=eight_weeks_ago
     ).values('freezing_date', 'total_kg').order_by('freezing_date')
@@ -14212,7 +14302,7 @@ def admin_dashboard(request):
         status_labels.append(status['freezing_status'].title())
         status_counts.append(status['count'])
     
-    # Top 5 items by quantity
+    # Top 5 items by quantity (overall)
     top_items = FreezingEntrySpotItem.objects.values(
         'item__name'
     ).annotate(
@@ -14237,7 +14327,28 @@ def admin_dashboard(request):
         'total_sales': total_sales,
         'total_orders': total_orders,
         
-        # Chart data - convert to JSON for JavaScript
+        # TODAY'S DATA
+        'today_date': today.strftime('%B %d, %Y'),
+        'today_total_entries': today_total_entries,
+        'today_complete': today_complete,
+        'today_incomplete': today_incomplete,
+        'today_kg': today_kg,
+        'today_usd': today_usd,
+        
+        'today_hourly_labels': json.dumps(today_hourly_labels),
+        'today_hourly_entries': json.dumps(today_hourly_entries),
+        'today_hourly_kg': json.dumps(today_hourly_kg),
+        'today_hourly_usd': json.dumps(today_hourly_usd),
+        'today_hourly_complete': json.dumps(today_hourly_complete),
+        'today_hourly_incomplete': json.dumps(today_hourly_incomplete),
+        
+        'today_status_labels': json.dumps(today_status_labels),
+        'today_status_counts': json.dumps(today_status_counts),
+        
+        'today_top_item_names': json.dumps(today_top_item_names),
+        'today_top_item_kg': json.dumps(today_top_item_kg),
+        
+        # OVERALL Chart data
         'chart_labels': json.dumps(chart_labels),
         'chart_complete': json.dumps(chart_complete),
         'chart_incomplete': json.dumps(chart_incomplete),
@@ -14257,95 +14368,6 @@ def admin_dashboard(request):
     
     return render(request, 'adminapp/dashboard.html', context)
 
-# Alternative approach if you want to filter by other criteria
-def admin_dashboard_alternative(request):
-    """
-    Alternative approach - you can modify the filtering logic based on your specific needs
-    """
-    # Count entries that don't have 'Active' or 'Completed' status
-    incomplete_spot_freezing = FreezingEntrySpot.objects.exclude(
-        freezing_status__iexact='Active'
-    ).exclude(
-        freezing_status__iexact='Completed'
-    ).count()
-    
-    incomplete_local_freezing = FreezingEntryLocal.objects.exclude(
-        freezing_status__iexact='Active'
-    ).exclude(
-        freezing_status__iexact='Completed'  
-    ).count()
-    
-    incomplete_freezing_count = incomplete_spot_freezing + incomplete_local_freezing
-    
-    context = {
-        'incomplete_freezing_count': incomplete_freezing_count,
-        
-    }
-    
-    return render(request, 'adminapp/dashboard.html', context)
-
-
-# If you want to show more detailed breakdown in dashboard
-def admin_dashboard_detailed(request):
-    """
-    Detailed dashboard with breakdown of different freezing statuses
-    """
-    # Spot freezing breakdown
-    spot_pending = FreezingEntrySpot.objects.filter(freezing_status__iexact='Pending').count()
-    spot_in_progress = FreezingEntrySpot.objects.filter(freezing_status__iexact='In Progress').count()
-    spot_incomplete = FreezingEntrySpot.objects.filter(freezing_status__iexact='Incomplete').count()
-    spot_active = FreezingEntrySpot.objects.filter(freezing_status__iexact='Active').count()
-    
-    # Local freezing breakdown
-    local_pending = FreezingEntryLocal.objects.filter(freezing_status__iexact='Pending').count()
-    local_in_progress = FreezingEntryLocal.objects.filter(freezing_status__iexact='In Progress').count()
-    local_incomplete = FreezingEntryLocal.objects.filter(freezing_status__iexact='Incomplete').count()
-    local_active = FreezingEntryLocal.objects.filter(freezing_status__iexact='Active').count()
-    
-    # Total counts
-    incomplete_freezing_count = spot_pending + spot_in_progress + spot_incomplete + local_pending + local_in_progress + local_incomplete
-    total_freezing_entries = FreezingEntrySpot.objects.count() + FreezingEntryLocal.objects.count()
-    
-    context = {
-        'incomplete_freezing_count': incomplete_freezing_count,
-        'total_freezing_entries': total_freezing_entries,
-        
-        # Spot freezing stats
-        'spot_pending': spot_pending,
-        'spot_in_progress': spot_in_progress,  
-        'spot_incomplete': spot_incomplete,
-        'spot_active': spot_active,
-        
-        # Local freezing stats
-        'local_pending': local_pending,
-        'local_in_progress': local_in_progress,
-        'local_incomplete': local_incomplete,
-        'local_active': local_active,
-        
-        # Other dashboard data
-        'total_subscribers': 1303,
-        'total_sales': 1345,
-        'total_orders': 576,
-    }
-    
-    return render(request, 'adminapp/dashboard.html', context)
-
-def incomplete_freezing_list(request):
-    # Get incomplete entries from both tables
-    incomplete_spot = FreezingEntrySpot.objects.filter(
-        Q(freezing_status__iexact='Incomplete') | 
-        Q(freezing_status__iexact='Pending')
-    )
-    incomplete_local = FreezingEntryLocal.objects.filter(
-        Q(freezing_status__iexact='Incomplete') | 
-        Q(freezing_status__iexact='Pending')
-    )
-    
-    context = {
-        'incomplete_spot': incomplete_spot,
-        'incomplete_local': incomplete_local,
-    }
-    return render(request, 'adminapp/incomplete_freezing_list.html', context)
 
 # temporary stock add 
 
@@ -14515,8 +14537,9 @@ def stock_search_ajax(request):
 
 
 
-
 def spot_purchase_profit_loss_report(request):
+
+    
     """
     Generate profit/loss report for spot purchases with comprehensive filters and ALL overhead calculations
     """
@@ -14860,6 +14883,22 @@ def spot_purchase_profit_loss_report(request):
         summary['peeling_overhead_rate'] = float(peeling_overhead_total)
         summary['processing_overhead_rate'] = float(processing_overhead_total)
         summary['shipment_overhead_rate'] = float(shipment_overhead_total)
+
+                # Prepare chart data
+        import json
+        chart_data = prepare_chart_data(report_data)
+
+        # Convert to JSON for JavaScript
+        chart_data_json = {
+            'labels': json.dumps(chart_data['labels']),
+            'costs': json.dumps(chart_data['costs']),
+            'revenues': json.dumps(chart_data['revenues']),
+            'top_profit_labels': json.dumps(chart_data['top_profit_labels']),
+            'top_profit_values': json.dumps(chart_data['top_profit_values']),
+            'top_loss_labels': json.dumps(chart_data['top_loss_labels']),
+            'top_loss_values': json.dumps(chart_data['top_loss_values']),
+            'margin_distribution': json.dumps(chart_data['margin_distribution'])
+        }
         
         # Sort by date (newest first)
         report_data.sort(key=lambda x: x['date'], reverse=True)
@@ -14896,6 +14935,7 @@ def spot_purchase_profit_loss_report(request):
         context = build_filter_context(
             report_data=report_data,
             summary=summary,
+            chart_data=chart_data_json,  # Add this line
             quick_filter=quick_filter,
             start_date=start_date,
             end_date=end_date,
@@ -14936,6 +14976,45 @@ def spot_purchase_profit_loss_report(request):
                 end_date=end_date
             )
             return render(request, 'spot_purchase_profit_loss_report.html', context)
+
+def prepare_chart_data(report_data):
+    """Prepare data for charts"""
+    # Sort by date for time series
+    sorted_data = sorted(report_data, key=lambda x: x['date'])
+    
+    # Labels (voucher numbers or dates)
+    labels = [f"#{item['voucher_number']}" for item in sorted_data[:20]]  # Limit to 20 for readability
+    costs = [item['total_cost'] for item in sorted_data[:20]]
+    revenues = [item['freezing_revenue'] for item in sorted_data[:20]]
+    
+    # Top 10 profitable
+    profitable = [item for item in report_data if item['profit_loss'] > 0]
+    profitable.sort(key=lambda x: x['profit_loss'], reverse=True)
+    top_profit_labels = [f"#{item['voucher_number']}" for item in profitable[:10]]
+    top_profit_values = [item['profit_loss'] for item in profitable[:10]]
+    
+    # Top 10 loss making
+    losses = [item for item in report_data if item['profit_loss'] < 0]
+    losses.sort(key=lambda x: x['profit_loss'])
+    top_loss_labels = [f"#{item['voucher_number']}" for item in losses[:10]]
+    top_loss_values = [item['profit_loss'] for item in losses[:10]]
+    
+    # Margin distribution (x: index, y: margin%)
+    margin_distribution = [
+        {'x': i, 'y': item['profit_percentage']} 
+        for i, item in enumerate(report_data)
+    ]
+    
+    return {
+        'labels': labels,
+        'costs': costs,
+        'revenues': revenues,
+        'top_profit_labels': top_profit_labels,
+        'top_profit_values': top_profit_values,
+        'top_loss_labels': top_loss_labels,
+        'top_loss_values': top_loss_values,
+        'margin_distribution': margin_distribution
+    }
 
 def spot_purchase_profit_loss_report_print(request):
     """
@@ -16927,6 +17006,8 @@ from django.contrib.auth.mixins import LoginRequiredMixin
 from django.views.generic import ListView
 from django.http import JsonResponse
 from django.db.models import Q
+from django.views.decorators.http import require_POST
+import json
 from adminapp.models import Notification
 from adminapp.utils.notification_helper import get_unread_count, get_recent_notifications
 
@@ -16938,7 +17019,6 @@ class NotificationListView(LoginRequiredMixin, ListView):
     model = Notification
     template_name = 'adminapp/notification_list.html'
     context_object_name = 'notifications'
-    paginate_by = 20
     
     def get_queryset(self):
         user = self.request.user
@@ -17075,6 +17155,87 @@ def mark_all_notifications_read(request):
 
 
 @login_required
+@require_POST
+def bulk_mark_as_read(request):
+    """
+    Mark multiple notifications as read
+    """
+    try:
+        data = json.loads(request.body)
+        notification_ids = data.get('notification_ids', [])
+        
+        if not notification_ids:
+            return JsonResponse({'success': False, 'message': 'No notifications selected'})
+        
+        user = request.user
+        notifications = Notification.objects.filter(
+            id__in=notification_ids,
+            is_active=True
+        ).filter(
+            Q(target_users=user) | Q(target_users__isnull=True)
+        )
+        
+        marked_count = 0
+        for notification in notifications:
+            if not notification.is_read_by(user):
+                notification.mark_as_read(user)
+                marked_count += 1
+        
+        return JsonResponse({
+            'success': True,
+            'marked_count': marked_count,
+            'unread_count': get_unread_count(user)
+        })
+    
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'message': str(e)
+        })
+
+
+@login_required
+@require_POST
+def bulk_delete_notifications(request):
+    """
+    Delete multiple notifications
+    """
+    try:
+        data = json.loads(request.body)
+        notification_ids = data.get('notification_ids', [])
+        
+        if not notification_ids:
+            return JsonResponse({'success': False, 'message': 'No notifications selected'})
+        
+        user = request.user
+        
+        # Get notifications - only allow deleting own notifications or if superuser
+        if user.is_superuser:
+            notifications = Notification.objects.filter(
+                id__in=notification_ids
+            )
+        else:
+            notifications = Notification.objects.filter(
+                id__in=notification_ids,
+                user=user
+            )
+        
+        deleted_count = notifications.update(is_active=False)
+        
+        return JsonResponse({
+            'success': True,
+            'deleted_count': deleted_count,
+            'unread_count': get_unread_count(user)
+        })
+    
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'message': str(e)
+        })
+
+
+@login_required
 def delete_notification(request, pk):
     """
     Delete (deactivate) a notification
@@ -17098,13 +17259,11 @@ def delete_notification(request, pk):
 
 @login_required
 def get_unread_count_ajax(request):
-
     """
     AJAX endpoint to get unread notification count
     """
     count = get_unread_count(request.user)
     return JsonResponse({'unread_count': count})
-
 
 
 # adminapp/views/notification_views.py (add this function)

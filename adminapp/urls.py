@@ -405,8 +405,7 @@ urlpatterns = [
     path('vouchers/tenant/summary-pdf/', views.tenant_voucher_summary_pdf, name='tenant_voucher_summary_pdf'),
     path('vouchers/tenant/statement/<int:tenant_id>/pdf/', views.tenant_statement_pdf, name='tenant_statement_pdf'),
 
-    # Add these to your urlpatterns
-    path('incomplete-freezing/', views.incomplete_freezing_list, name='incomplete_freezing_list'),
+
 
 
     # Added BY Akhil From Shameer 25/09/2025
@@ -476,6 +475,8 @@ urlpatterns = [
     path('notifications/mark-all-read/',views.mark_all_notifications_read, name='notification_mark_all_read'),
     path('notifications/delete/<int:pk>/',views.delete_notification, name='notification_delete'),
     path('notifications/ajax/count/',views.get_unread_count_ajax, name='notification_count_ajax'),
+    path('notifications/bulk-mark-read/', views.bulk_mark_as_read, name='notification_bulk_mark_read'),
+    path('notifications/bulk-delete/', views.bulk_delete_notifications, name='notification_bulk_delete'),
 
     # Tenant Stock Adjustment 
     path('tenant-stock/adjustment/', views.tenant_stock_adjustment, name='tenant_stock_adjustment'),

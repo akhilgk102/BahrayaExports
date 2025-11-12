@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Stock Report - Print View</title>
+    <title>Stock Report - Demo (Exact Design)</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <style>
@@ -14,7 +14,7 @@
         }
 
         body {
-            font-family: 'Arial', sans-serif;
+            font-family: 'Helvetica', 'Arial', sans-serif;
             font-size: 10px;
             line-height: 1.4;
             color: #000;
@@ -26,12 +26,13 @@
             margin: 12mm 8mm;
         }
 
+        /* REPORT HEADER - EXACT BLUE MATCH TO SCREENSHOT */
         .report-header {
             text-align: center;
             margin-bottom: 20px;
-            padding: 15px;
-            border: 2px solid #007bff;
+            padding: 20px;
             background: white;
+            border: 2px solid #007BFF;
             border-radius: 8px;
         }
 
@@ -39,20 +40,23 @@
             font-size: 20px;
             font-weight: bold;
             margin-bottom: 8px;
-            color: #007bff;
+            color: #007BFF;
             text-transform: uppercase;
+            font-family: 'Helvetica-Bold', sans-serif;
         }
 
         .report-subtitle {
             font-size: 14px;
-            margin-bottom: 10px;
+            margin-bottom: 15px;
             color: #666;
+            font-family: 'Helvetica', sans-serif;
         }
 
+        /* COMPANY INFO BOX - EXACT GREEN BORDER LIKE SCREENSHOT */
         .company-info {
-            background: #f8f9fa;
-            padding: 10px;
-            border: 1px solid #28a745;
+            background: white;
+            padding: 12px 20px;
+            border: 2px solid #28a745;
             margin: 10px 0;
             border-radius: 4px;
         }
@@ -62,49 +66,41 @@
             font-size: 15px;
             text-align: center;
             margin-bottom: 4px;
-            color: #155724;
+            color: #333;
+            font-family: 'Helvetica-Bold', sans-serif;
         }
 
         .company-location {
             font-size: 11px;
             text-align: center;
             margin-bottom: 2px;
-            color: #155724;
+            color: #333;
+            font-family: 'Helvetica', sans-serif;
         }
 
         .date-range {
             font-size: 12px;
-            margin-top: 8px;
+            margin-top: 12px;
             font-weight: bold;
-            color: #007bff;
+            color: #007BFF;
+            text-align: center;
+            font-family: 'Helvetica', sans-serif;
         }
 
-        /* Section Styling */
+        /* SECTION HEADERS - EXACT GRAY BACKGROUND FROM SCREENSHOT */
         .stock-section {
             margin-bottom: 30px;
             page-break-inside: avoid;
         }
 
-        .section-number {
-            font-size: 16px;
-            font-weight: bold;
-            color: #007bff;
-            margin-bottom: 10px;
-            padding: 8px 12px;
-            background: #e7f3ff;
-            border-left: 4px solid #007bff;
-            border-radius: 4px;
-        }
-
         .section-header-row {
             display: grid;
             grid-template-columns: repeat(5, 1fr);
-            gap: 10px;
-            margin-bottom: 15px;
-            background: #f8f9fa;
-            padding: 12px;
-            border: 1px solid #dee2e6;
-            border-radius: 6px;
+            gap: 2px;
+            margin-bottom: 12px;
+            background: #F0F0F0;  /* Exact gray from screenshot */
+            padding: 10px;
+            border: 1px solid #DDD;
         }
 
         .section-info-box {
@@ -112,93 +108,98 @@
         }
 
         .section-info-label {
-            font-size: 10px;
+            font-size: 8px;
             font-weight: bold;
-            color: #6c757d;
+            color: #666;
             text-transform: uppercase;
             margin-bottom: 4px;
+            font-family: 'Helvetica-Bold', sans-serif;
         }
 
         .section-info-value {
-            font-size: 13px;
+            font-size: 11px;
             font-weight: bold;
-            color: #212529;
+            color: #000;
+            font-family: 'Helvetica-Bold', sans-serif;
         }
 
-        /* Table Styling */
+        /* DATA TABLES - EXACT BLUE HEADER FROM SCREENSHOT */
         .data-table {
             width: 100%;
             border-collapse: collapse;
             margin-bottom: 15px;
-            border: 2px solid #007bff;
+            border: 0.5px solid #CCCCCC;
             background-color: white;
-            font-size: 10px;
+            font-size: 8px;
         }
 
         .data-table th {
-            background: #007bff;
+            background: #2196F3;  /* Exact blue from screenshot */
             color: white;
-            border: 1px solid #0056b3;
+            border: 0.5px solid #2196F3;
             padding: 8px 4px;
             text-align: center;
             font-weight: bold;
-            font-size: 9px;
+            font-size: 8px;
             text-transform: uppercase;
+            font-family: 'Helvetica-Bold', sans-serif;
         }
 
         .data-table td {
-            border: 1px solid #dee2e6;
+            border: 0.5px solid #CCCCCC;
             padding: 6px 4px;
             text-align: left;
             vertical-align: middle;
-            font-size: 10px;
+            font-size: 8px;
         }
 
         .data-table .number-col {
             text-align: right;
-            padding-right: 8px;
-            font-weight: 600;
+            padding-right: 6px;
+            font-weight: 500;
         }
 
         .data-table .center-col {
             text-align: center;
         }
 
+        /* Alternating row colors (subtle) */
         .data-table tbody tr:nth-child(even) {
-            background-color: #f8f9fa;
+            background-color: #F8F9FA;
         }
 
+        /* SECTION TOTAL ROW - EXACT GREEN FROM SCREENSHOT */
         .section-total-row {
-            background: #d4edda !important;
+            background: #D0EDC0 !important;  /* Light green from screenshot */
             font-weight: bold;
         }
 
         .section-total-row td {
-            border-top: 3px solid #28a745;
-            border-bottom: 3px solid #28a745;
+            border: 0.5px solid #CCCCCC;
             font-weight: bold;
-            padding: 10px 4px;
-            color: #155724;
-            font-size: 11px;
+            padding: 8px 4px;
+            color: #2E7D32;  /* Dark green from screenshot */
+            font-size: 9px;
         }
 
-        /* Grand Total Section */
+        /* GRAND TOTAL SECTION - EXACT RED FROM SCREENSHOT */
         .grand-total-section {
-            margin-top: 25px;
-            border: 2px solid #dc3545;
+            margin-top: 30px;
+            border: 2px solid #DC3545;
             border-radius: 8px;
             overflow: hidden;
             page-break-inside: avoid;
         }
 
         .grand-total-header {
-            background: #dc3545;
+            background: #DC3545;  /* Exact red from screenshot */
             color: white;
-            padding: 12px;
+            padding: 15px;
             text-align: center;
             font-weight: bold;
             font-size: 16px;
             text-transform: uppercase;
+            font-family: 'Helvetica-Bold', sans-serif;
         }
 
         .grand-total-content {
@@ -208,7 +209,7 @@
         .grand-total-row {
             display: grid;
             grid-template-columns: 1fr 1fr;
-            border-bottom: 1px solid #dc3545;
+            border-bottom: 1px solid #DC3545;
         }
 
         .grand-total-row:last-child {
@@ -216,20 +217,28 @@
         }
 
         .grand-total-label {
-            background: #f8d7da;
-            padding: 12px 20px;
+            background: #F8D7DA;  /* Light red from screenshot */
+            padding: 12px 15px;
             font-weight: bold;
-            color: #721c24;
-            border-right: 1px solid #dc3545;
-            font-size: 12px;
+            color: #721C24;
+            border-right: 1px solid #DC3545;
+            font-size: 11px;
+            font-family: 'Helvetica-Bold', sans-serif;
         }
 
         .grand-total-value {
-            padding: 12px 20px;
+            padding: 12px 15px;
             text-align: right;
             font-weight: bold;
-            font-size: 14px;
+            font-size: 11px;
             color: #212529;
+            font-family: 'Helvetica-Bold', sans-serif;
+        }
+
+        /* Last two rows with larger font and red color */
+        .grand-total-row:nth-last-child(-n+2) .grand-total-value {
+            font-size: 15px;
+            color: #DC3545;
         }
 
         .no-data {
@@ -245,12 +254,13 @@
         }
 
         .footer {
-            margin-top: 20px;
-            padding-top: 10px;
+            margin-top: 30px;
+            padding-top: 15px;
             border-top: 1px solid #ccc;
             text-align: center;
-            font-size: 9px;
+            font-size: 8px;
             color: #666;
+            font-family: 'Helvetica', sans-serif;
         }
 
         @media print {
@@ -298,7 +308,7 @@
             .no-print {
                 text-align: center;
                 padding: 15px;
-                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                background: linear-gradient(135deg, #007BFF 0%, #0056b3 100%);
                 margin-bottom: 20px;
                 border-radius: 8px;
                 box-shadow: 0 4px 15px rgba(0,0,0,0.2);
@@ -308,13 +318,14 @@
                 padding: 12px 24px;
                 font-size: 14px;
                 background: white;
-                color: #667eea;
+                color: #007BFF;
                 border: none;
                 border-radius: 6px;
                 cursor: pointer;
                 margin: 0 8px;
                 font-weight: bold;
                 transition: all 0.3s ease;
+                font-family: 'Helvetica', sans-serif;
             }
 
             .no-print button:hover {
@@ -347,11 +358,12 @@
             <div id="status"></div>
         </div>
 
-        <!-- Report Header -->
+        <!-- REPORT HEADER - EXACT DESIGN FROM SCREENSHOT -->
         <div class="report-header">
             <div class="report-title">COMPREHENSIVE STOCK REPORT</div>
             <div class="report-subtitle">Detailed Inventory Breakdown</div>
             
+            <!-- Company Info Box -->
             <div class="company-info">
                 <div class="company-name">PREMIER MARINE FOOD</div>
                 <div class="company-location">VANDANAM, ALAPPUZHA</div>
@@ -359,56 +371,54 @@
             </div>
             
             <div class="date-range">
-                Generated: {% now "d-M-Y H:i" %}
-                {% if start_date and end_date %}
-                | Period: {{ start_date }} to {{ end_date }}
-                {% endif %}
+                Generated: 11-Nov-2025 06:49
+                | Period: 2025-10-01 to 2025-11-11
             </div>
         </div>
 
         <!-- Sectioned Stock Data -->
         <div id="report-content">
-            {% for section_key, section_data in sectioned_data.items %}
+            <!-- SECTION 1: MACKERAL I ST -->
             <div class="stock-section">
                 
-                <!-- Section Header Info -->
+                <!-- Section Header - EXACT GRAY BACKGROUND FROM SCREENSHOT -->
                 <div class="section-header-row">
                     <div class="section-info-box">
                         <div class="section-info-label">Item Quality</div>
-                        <div class="section-info-value">{{ section_data.item_quality }}</div>
+                        <div class="section-info-value">MACKERAL I ST</div>
                     </div>
                     <div class="section-info-box">
                         <div class="section-info-label">Unit</div>
-                        <div class="section-info-value">{{ section_data.unit_code }}</div>
+                        <div class="section-info-value">10X2</div>
                     </div>
                     <div class="section-info-box">
                         <div class="section-info-label">Glaze</div>
-                        <div class="section-info-value">{{ section_data.glaze }}%</div>
+                        <div class="section-info-value">5%</div>
                     </div>
                     <div class="section-info-box">
                         <div class="section-info-label">Category</div>
-                        <div class="section-info-value">{{ section_data.category }}</div>
+                        <div class="section-info-value">BLOCK</div>
                     </div>
                     <div class="section-info-box">
                         <div class="section-info-label">Brand</div>
-                        <div class="section-info-value">{{ section_data.brand }}</div>
+                        <div class="section-info-value">THT</div>
                     </div>
                 </div>
 
-                <!-- Data Table -->
+                <!-- Data Table - EXACT BLUE HEADER FROM SCREENSHOT -->
                 <table class="data-table">
                     <thead>
                         <tr>
-                            <th>No.</th>
-                            <th>Grade</th>
-                            <th>Opening</th>
-                            <th>Freezing</th>
-                            <th>Shipment</th>
-                            <th>Transfer IN</th>
-                            <th>Transfer OUT</th>
-                            <th colspan="2">Adjustment</th>
-                            <th>Total KG</th>
-                            <th>Total Case</th>
+                            <th>NO.</th>
+                            <th>GRADE</th>
+                            <th>OPENING</th>
+                            <th>FREEZING</th>
+                            <th>SHIPMENT</th>
+                            <th>TRANSFER IN</th>
+                            <th>TRANSFER OUT</th>
+                            <th colspan="2">ADJUSTMENT</th>
+                            <th>TOTAL KG</th>
+                            <th>TOTAL CASE</th>
                         </tr>
                         <tr>
                             <th colspan="7"></th>
@@ -418,97 +428,384 @@
                         </tr>
                     </thead>
                     <tbody>
-                        {% for item in section_data.items %}
                         <tr>
-                            <td class="center-col">{{ forloop.counter }}</td>
-                            <td class="center-col">{{ item.grade }}</td>
-                            <td class="number-col">{{ item.opening|floatformat:2 }}</td>
-                            <td class="number-col">{{ item.freezing|floatformat:2 }}</td>
-                            <td class="number-col">{{ item.shipment|floatformat:2 }}</td>
-                            <td class="number-col">{{ item.transfer_in|floatformat:2 }}</td>
-                            <td class="number-col">{{ item.transfer_out|floatformat:2 }}</td>
-                            <td class="number-col">{{ item.adjustment_plus|floatformat:2 }}</td>
-                            <td class="number-col">{{ item.adjustment_minus|floatformat:2 }}</td>
-                            <td class="number-col"><strong>{{ item.total_slab|floatformat:2 }}</strong></td>
-                            <td class="number-col"><strong>{{ item.total_case|floatformat:2 }}</strong></td>
+                            <td class="center-col">1</td>
+                            <td class="center-col">1.0</td>
+                            <td class="number-col">0.00</td>
+                            <td class="number-col">0.00</td>
+                            <td class="number-col">0.00</td>
+                            <td class="number-col">0.00</td>
+                            <td class="number-col">0.00</td>
+                            <td class="number-col">0.00</td>
+                            <td class="number-col">0.00</td>
+                            <td class="number-col"><strong>0.00</strong></td>
+                            <td class="number-col"><strong>0.00</strong></td>
                         </tr>
-                        {% endfor %}
+                        <tr>
+                            <td class="center-col">2</td>
+                            <td class="center-col">2.0</td>
+                            <td class="number-col">0.00</td>
+                            <td class="number-col">0.00</td>
+                            <td class="number-col">0.00</td>
+                            <td class="number-col">0.00</td>
+                            <td class="number-col">0.00</td>
+                            <td class="number-col">0.00</td>
+                            <td class="number-col">0.00</td>
+                            <td class="number-col"><strong>0.00</strong></td>
+                            <td class="number-col"><strong>0.00</strong></td>
+                        </tr>
+                        <tr>
+                            <td class="center-col">3</td>
+                            <td class="center-col">3.0</td>
+                            <td class="number-col">0.00</td>
+                            <td class="number-col">0.00</td>
+                            <td class="number-col">0.00</td>
+                            <td class="number-col">0.00</td>
+                            <td class="number-col">0.00</td>
+                            <td class="number-col">0.00</td>
+                            <td class="number-col">0.00</td>
+                            <td class="number-col"><strong>0.00</strong></td>
+                            <td class="number-col"><strong>0.00</strong></td>
+                        </tr>
+                        <tr>
+                            <td class="center-col">4</td>
+                            <td class="center-col">4.0</td>
+                            <td class="number-col">0.00</td>
+                            <td class="number-col">0.00</td>
+                            <td class="number-col">0.00</td>
+                            <td class="number-col">0.00</td>
+                            <td class="number-col">0.00</td>
+                            <td class="number-col">0.00</td>
+                            <td class="number-col">0.00</td>
+                            <td class="number-col"><strong>0.00</strong></td>
+                            <td class="number-col"><strong>0.00</strong></td>
+                        </tr>
+                        <tr>
+                            <td class="center-col">5</td>
+                            <td class="center-col">5.0</td>
+                            <td class="number-col">0.00</td>
+                            <td class="number-col">0.00</td>
+                            <td class="number-col">0.00</td>
+                            <td class="number-col">0.00</td>
+                            <td class="number-col">0.00</td>
+                            <td class="number-col">0.00</td>
+                            <td class="number-col">0.00</td>
+                            <td class="number-col"><strong>0.00</strong></td>
+                            <td class="number-col"><strong>0.00</strong></td>
+                        </tr>
                         
-                        <!-- Section Total Row -->
+                        <!-- Section Total Row - EXACT GREEN FROM SCREENSHOT -->
                         <tr class="section-total-row">
                             <td colspan="2"><strong>SECTION TOTAL</strong></td>
-                            <td class="number-col"><strong>{{ section_data.totals.opening|floatformat:2 }}</strong></td>
-                            <td class="number-col"><strong>{{ section_data.totals.freezing|floatformat:2 }}</strong></td>
-                            <td class="number-col"><strong>{{ section_data.totals.shipment|floatformat:2 }}</strong></td>
-                            <td class="number-col"><strong>{{ section_data.totals.transfer_in|floatformat:2 }}</strong></td>
-                            <td class="number-col"><strong>{{ section_data.totals.transfer_out|floatformat:2 }}</strong></td>
-                            <td class="number-col"><strong>{{ section_data.totals.adjustment_plus|floatformat:2 }}</strong></td>
-                            <td class="number-col"><strong>{{ section_data.totals.adjustment_minus|floatformat:2 }}</strong></td>
-                            <td class="number-col"><strong>{{ section_data.totals.total_slab|floatformat:2 }}</strong></td>
-                            <td class="number-col"><strong>{{ section_data.totals.total_case|floatformat:2 }}</strong></td>
+                            <td class="number-col"><strong>0.00</strong></td>
+                            <td class="number-col"><strong>0.00</strong></td>
+                            <td class="number-col"><strong>0.00</strong></td>
+                            <td class="number-col"><strong>0.00</strong></td>
+                            <td class="number-col"><strong>0.00</strong></td>
+                            <td class="number-col"><strong>0.00</strong></td>
+                            <td class="number-col"><strong>0.00</strong></td>
+                            <td class="number-col"><strong>0.00</strong></td>
+                            <td class="number-col"><strong>0.00</strong></td>
                         </tr>
                     </tbody>
                 </table>
             </div>
-            {% empty %}
-            <div class="no-data">
-                <h3>📦 No Stock Data Available</h3>
-                <p>No stock records found matching your filter criteria.</p>
-            </div>
-            {% endfor %}
 
-            <!-- Grand Total -->
-            {% if sectioned_data %}
+            <!-- SECTION 2: VANAMEI H/ON -->
+            <div class="stock-section">
+                <div class="section-header-row">
+                    <div class="section-info-box">
+                        <div class="section-info-label">Item Quality</div>
+                        <div class="section-info-value">VANAMEI H/ON</div>
+                    </div>
+                    <div class="section-info-box">
+                        <div class="section-info-label">Unit</div>
+                        <div class="section-info-value">10X2</div>
+                    </div>
+                    <div class="section-info-box">
+                        <div class="section-info-label">Glaze</div>
+                        <div class="section-info-value">5%</div>
+                    </div>
+                    <div class="section-info-box">
+                        <div class="section-info-label">Category</div>
+                        <div class="section-info-value">TRAY</div>
+                    </div>
+                    <div class="section-info-box">
+                        <div class="section-info-label">Brand</div>
+                        <div class="section-info-value">THT</div>
+                    </div>
+                </div>
+
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>NO.</th>
+                            <th>GRADE</th>
+                            <th>OPENING</th>
+                            <th>FREEZING</th>
+                            <th>SHIPMENT</th>
+                            <th>TRANSFER IN</th>
+                            <th>TRANSFER OUT</th>
+                            <th colspan="2">ADJUSTMENT</th>
+                            <th>TOTAL KG</th>
+                            <th>TOTAL CASE</th>
+                        </tr>
+                        <tr>
+                            <th colspan="7"></th>
+                            <th>(+)</th>
+                            <th>(-)</th>
+                            <th colspan="2"></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td class="center-col">1</td>
+                            <td class="center-col">21/25</td>
+                            <td class="number-col">10.50</td>
+                            <td class="number-col">25.00</td>
+                            <td class="number-col">15.00</td>
+                            <td class="number-col">5.00</td>
+                            <td class="number-col">0.00</td>
+                            <td class="number-col">0.00</td>
+                            <td class="number-col">2.00</td>
+                            <td class="number-col"><strong>23.50</strong></td>
+                            <td class="number-col"><strong>5.00</strong></td>
+                        </tr>
+                        <tr>
+                            <td class="center-col">2</td>
+                            <td class="center-col">26/30</td>
+                            <td class="number-col">8.00</td>
+                            <td class="number-col">30.00</td>
+                            <td class="number-col">20.00</td>
+                            <td class="number-col">0.00</td>
+                            <td class="number-col">3.00</td>
+                            <td class="number-col">1.00</td>
+                            <td class="number-col">0.00</td>
+                            <td class="number-col"><strong>16.00</strong></td>
+                            <td class="number-col"><strong>8.00</strong></td>
+                        </tr>
+                        <tr>
+                            <td class="center-col">3</td>
+                            <td class="center-col">31/40</td>
+                            <td class="number-col">15.00</td>
+                            <td class="number-col">40.00</td>
+                            <td class="number-col">25.00</td>
+                            <td class="number-col">10.00</td>
+                            <td class="number-col">5.00</td>
+                            <td class="number-col">0.00</td>
+                            <td class="number-col">1.00</td>
+                            <td class="number-col"><strong>34.00</strong></td>
+                            <td class="number-col"><strong>12.00</strong></td>
+                        </tr>
+                        <tr>
+                            <td class="center-col">4</td>
+                            <td class="center-col">41/50</td>
+                            <td class="number-col">5.00</td>
+                            <td class="number-col">20.00</td>
+                            <td class="number-col">15.00</td>
+                            <td class="number-col">0.00</td>
+                            <td class="number-col">0.00</td>
+                            <td class="number-col">0.50</td>
+                            <td class="number-col">0.00</td>
+                            <td class="number-col"><strong>10.50</strong></td>
+                            <td class="number-col"><strong>3.00</strong></td>
+                        </tr>
+                        
+                        <tr class="section-total-row">
+                            <td colspan="2"><strong>SECTION TOTAL</strong></td>
+                            <td class="number-col"><strong>38.50</strong></td>
+                            <td class="number-col"><strong>115.00</strong></td>
+                            <td class="number-col"><strong>75.00</strong></td>
+                            <td class="number-col"><strong>15.00</strong></td>
+                            <td class="number-col"><strong>8.00</strong></td>
+                            <td class="number-col"><strong>1.50</strong></td>
+                            <td class="number-col"><strong>3.00</strong></td>
+                            <td class="number-col"><strong>84.00</strong></td>
+                            <td class="number-col"><strong>28.00</strong></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- SECTION 3: SHRIMPS LOCAL -->
+            <div class="stock-section">
+                <div class="section-header-row">
+                    <div class="section-info-box">
+                        <div class="section-info-label">Item Quality</div>
+                        <div class="section-info-value">SHRIMPS LOCAL</div>
+                    </div>
+                    <div class="section-info-box">
+                        <div class="section-info-label">Unit</div>
+                        <div class="section-info-value">10X1</div>
+                    </div>
+                    <div class="section-info-box">
+                        <div class="section-info-label">Glaze</div>
+                        <div class="section-info-value">3%</div>
+                    </div>
+                    <div class="section-info-box">
+                        <div class="section-info-label">Category</div>
+                        <div class="section-info-value">BLOCK</div>
+                    </div>
+                    <div class="section-info-box">
+                        <div class="section-info-label">Brand</div>
+                        <div class="section-info-value">THT</div>
+                    </div>
+                </div>
+
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>NO.</th>
+                            <th>GRADE</th>
+                            <th>OPENING</th>
+                            <th>FREEZING</th>
+                            <th>SHIPMENT</th>
+                            <th>TRANSFER IN</th>
+                            <th>TRANSFER OUT</th>
+                            <th colspan="2">ADJUSTMENT</th>
+                            <th>TOTAL KG</th>
+                            <th>TOTAL CASE</th>
+                        </tr>
+                        <tr>
+                            <th colspan="7"></th>
+                            <th>(+)</th>
+                            <th>(-)</th>
+                            <th colspan="2"></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td class="center-col">1</td>
+                            <td class="center-col">8/12</td>
+                            <td class="number-col">20.00</td>
+                            <td class="number-col">50.00</td>
+                            <td class="number-col">30.00</td>
+                            <td class="number-col">0.00</td>
+                            <td class="number-col">0.00</td>
+                            <td class="number-col">2.00</td>
+                            <td class="number-col">0.00</td>
+                            <td class="number-col"><strong>42.00</strong></td>
+                            <td class="number-col"><strong>15.00</strong></td>
+                        </tr>
+                        <tr>
+                            <td class="center-col">2</td>
+                            <td class="center-col">13/15</td>
+                            <td class="number-col">15.00</td>
+                            <td class="number-col">35.00</td>
+                            <td class="number-col">25.00</td>
+                            <td class="number-col">5.00</td>
+                            <td class="number-col">2.00</td>
+                            <td class="number-col">0.00</td>
+                            <td class="number-col">1.00</td>
+                            <td class="number-col"><strong>27.00</strong></td>
+                            <td class="number-col"><strong>10.00</strong></td>
+                        </tr>
+                        <tr>
+                            <td class="center-col">3</td>
+                            <td class="center-col">16/20</td>
+                            <td class="number-col">25.00</td>
+                            <td class="number-col">60.00</td>
+                            <td class="number-col">40.00</td>
+                            <td class="number-col">10.00</td>
+                            <td class="number-col">5.00</td>
+                            <td class="number-col">1.50</td>
+                            <td class="number-col">0.00</td>
+                            <td class="number-col"><strong>51.50</strong></td>
+                            <td class="number-col"><strong>20.00</strong></td>
+                        </tr>
+                        <tr>
+                            <td class="center-col">4</td>
+                            <td class="center-col">21/25</td>
+                            <td class="number-col">12.00</td>
+                            <td class="number-col">30.00</td>
+                            <td class="number-col">20.00</td>
+                            <td class="number-col">0.00</td>
+                            <td class="number-col">0.00</td>
+                            <td class="number-col">0.00</td>
+                            <td class="number-col">0.50</td>
+                            <td class="number-col"><strong>21.50</strong></td>
+                            <td class="number-col"><strong>8.00</strong></td>
+                        </tr>
+                        <tr>
+                            <td class="center-col">5</td>
+                            <td class="center-col">26/30</td>
+                            <td class="number-col">8.00</td>
+                            <td class="number-col">20.00</td>
+                            <td class="number-col">15.00</td>
+                            <td class="number-col">3.00</td>
+                            <td class="number-col">1.00</td>
+                            <td class="number-col">0.00</td>
+                            <td class="number-col">0.00</td>
+                            <td class="number-col"><strong>15.00</strong></td>
+                            <td class="number-col"><strong>5.00</strong></td>
+                        </tr>
+                        
+                        <tr class="section-total-row">
+                            <td colspan="2"><strong>SECTION TOTAL</strong></td>
+                            <td class="number-col"><strong>80.00</strong></td>
+                            <td class="number-col"><strong>195.00</strong></td>
+                            <td class="number-col"><strong>130.00</strong></td>
+                            <td class="number-col"><strong>18.00</strong></td>
+                            <td class="number-col"><strong>8.00</strong></td>
+                            <td class="number-col"><strong>3.50</strong></td>
+                            <td class="number-col"><strong>1.50</strong></td>
+                            <td class="number-col"><strong>157.00</strong></td>
+                            <td class="number-col"><strong>58.00</strong></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Grand Total - EXACT RED DESIGN FROM SCREENSHOT -->
             <div class="grand-total-section">
                 <div class="grand-total-header">GRAND TOTAL SUMMARY</div>
                 <div class="grand-total-content">
                     <div class="grand-total-row">
                         <div class="grand-total-label">Total Sections:</div>
-                        <div class="grand-total-value">{{ grand_totals.section_count }}</div>
+                        <div class="grand-total-value">3</div>
                     </div>
                     <div class="grand-total-row">
                         <div class="grand-total-label">Total Opening:</div>
-                        <div class="grand-total-value">{{ grand_totals.opening|floatformat:2 }} KG</div>
+                        <div class="grand-total-value">118.50 KG</div>
                     </div>
                     <div class="grand-total-row">
                         <div class="grand-total-label">Total Freezing:</div>
-                        <div class="grand-total-value">{{ grand_totals.freezing|floatformat:2 }} KG</div>
+                        <div class="grand-total-value">310.00 KG</div>
                     </div>
                     <div class="grand-total-row">
                         <div class="grand-total-label">Total Shipment:</div>
-                        <div class="grand-total-value">{{ grand_totals.shipment|floatformat:2 }} KG</div>
+                        <div class="grand-total-value">205.00 KG</div>
                     </div>
                     <div class="grand-total-row">
                         <div class="grand-total-label">Total Transfer IN:</div>
-                        <div class="grand-total-value">{{ grand_totals.transfer_in|floatformat:2 }} KG</div>
+                        <div class="grand-total-value">33.00 KG</div>
                     </div>
                     <div class="grand-total-row">
                         <div class="grand-total-label">Total Transfer OUT:</div>
-                        <div class="grand-total-value">{{ grand_totals.transfer_out|floatformat:2 }} KG</div>
+                        <div class="grand-total-value">16.00 KG</div>
                     </div>
                     <div class="grand-total-row">
                         <div class="grand-total-label">Total Adjustment (+):</div>
-                        <div class="grand-total-value">{{ grand_totals.adjustment_plus|floatformat:2 }} KG</div>
+                        <div class="grand-total-value">5.00 KG</div>
                     </div>
                     <div class="grand-total-row">
                         <div class="grand-total-label">Total Adjustment (-):</div>
-                        <div class="grand-total-value">{{ grand_totals.adjustment_minus|floatformat:2 }} KG</div>
+                        <div class="grand-total-value">4.50 KG</div>
                     </div>
                     <div class="grand-total-row">
                         <div class="grand-total-label">📦 Total KG:</div>
-                        <div class="grand-total-value" style="font-size: 16px; color: #dc3545;">{{ grand_totals.total_slab|floatformat:2 }} KG</div>
+                        <div class="grand-total-value">241.00 KG</div>
                     </div>
                     <div class="grand-total-row">
                         <div class="grand-total-label">📦 TOTAL CASE:</div>
-                        <div class="grand-total-value" style="font-size: 16px; color: #dc3545;">{{ grand_totals.total_case|floatformat:2 }}</div>
+                        <div class="grand-total-value">86.00</div>
                     </div>
                 </div>
             </div>
-            {% endif %}
         </div>
 
         <div class="footer">
-            Generated on {% now "d-M-Y H:i" %} | Premier Marine Food - Comprehensive Stock Report
+            Generated on 11-Nov-2025 06:49 | Premier Marine Food - Comprehensive Stock Report
         </div>
     </div>
 
